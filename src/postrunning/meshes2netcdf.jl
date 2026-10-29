@@ -72,7 +72,10 @@ using DataFrames
 using Base.Threads
 using StatsBase
 
-struct mesh2D 
+# CSV.jl 1.0 replaced `silencewarnings` by `on_error`
+const CSV_SILENCE = pkgversion(CSV) >= v"1" ? (on_error=:collect,) : (silencewarnings=true,)
+
+struct mesh2D
     Nx::Int
     Nz::Int
     Lx::Float64
@@ -121,8 +124,8 @@ function read_data(var::String, step::Integer, mesh::mesh2D, vartype::Type; velo
     file = "$(var)/$(var)_$(step).txt"
     Nx,Nz = mesh.Nx, mesh.Nz
     
-    skipto::Int = 0
-    if surface skipto=0 else skipto=3 end
+    skipto::Int = 1
+    if surface skipto=1 else skipto=3 end
     C = CSV.File(file, header=false, comment="P", skipto=skipto,types=vartype)|>CSV.Tables.matrix
     
     
@@ -336,7 +339,7 @@ function read_litho_file(fpath::String)
                     comment="P", 
                     delim=' ', 
                     types=[Int32, Int32, Int8], # x, z, lith_id
-                    silencewarnings=true)
+                    ; CSV_SILENCE...)
                     
     return Vector(conf.Column1), Vector(conf.Column2), Vector(conf.Column3)
 end

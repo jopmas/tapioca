@@ -30,6 +30,9 @@ using Printf
 using DataFrames
 using Base.Threads
 
+# CSV.jl 1.0 replaced `silencewarnings` by `on_error`
+const CSV_SILENCE = pkgversion(CSV) >= v"1" ? (on_error=:collect,) : (silencewarnings=true,)
+
 function read_param(fpath::String="param.txt")::Dict{String,String}
     param_dict = Dict{String,String}()
     open(fpath, "r") do file
@@ -72,16 +75,17 @@ function extract_reference_ids(ref_step::Int, ncores::Int)
     
     @threads for core in 0:(ncores-1)
         fpath = joinpath("steps", "step_$(ref_step)_$(core).txt")
-        if isfile(fpath)
-            dfs[core+1] = CSV.read(fpath, DataFrame, 
+        # Mandyoc writes empty files for ranks without particles
+        if isfile(fpath) && filesize(fpath) > 0
+            dfs[core+1] = CSV.read(fpath, DataFrame,
                                    header=false, delim=' ', ignorerepeated=true,
                                    select=[1, 2, 3, 4], 
                                    types=[DTYPES["x"], DTYPES["z"], DTYPES["id"], DTYPES["lithology"], Float64], 
-                                   silencewarnings=true)
+                                   ; CSV_SILENCE...)
         end
     end
     
-    df_ref = vcat(dfs...)
+    df_ref = vcat(dfs[filter(i -> isassigned(dfs, i), eachindex(dfs))]...)
     rename!(df_ref, [:x, :z, :id, :lithology])
     
     # Filtering
@@ -114,7 +118,7 @@ function create_particles_nc(nc_fname::String, target_ids::Vector{Int32}, steps:
         defDim(ds, "time", num_steps)
 
         # 1D Coordinates
-        defVar(ds, "id", target_ids, ("ID",), attrib=Dict("long_name"=>"particle_id",
+        defVar(ds, "id", target_ids, ("id",), attrib=Dict("long_name"=>"particle_id",
                                                           "cf_role"   => "trajectory_id"), 
                                         deflatelevel=DEFLATE_LEVEL) 
 
@@ -188,16 +192,16 @@ function process_trajectories(nc_fname::String, steps::Vector{Int32}, target_ids
             
             for core in 0:(ncores-1)
                 fpath = joinpath("steps", "step_$(step)_$(core).txt")
-                if !isfile(fpath) continue end
+                if !isfile(fpath) || filesize(fpath) == 0 continue end
                 
                 data = CSV.File(fpath, header=false, delim=' ', ignorerepeated=true, 
                 select=[1,2,3,4], types=[DTYPES["x"], DTYPES["z"], DTYPES["id"], DTYPES["lithology"], Float64], 
-                silencewarnings=true)
+                ; CSV_SILENCE...)
                 
                 @inbounds for row in data
                     id = row.Column3
                     
-                    # Avoid OutOfBounds if a new ID appears 
+                    # Avoid OutOfBounds if a new id appears
                     if id >= 0 && id < length(id_map)
                         idx = id_map[id + 1]
                         

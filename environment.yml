@@ -37,6 +37,7 @@ dependencies:
   - ipyvtklink=0.2.3
   - jupyterlab=4.6.4
   - ipython=9.17.1
+  - ffmpeg=8.1.1      # videos of the frames
 
   # tests
   - pytest=9.1.1

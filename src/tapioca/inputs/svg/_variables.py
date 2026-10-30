@@ -6,7 +6,8 @@ scripts written with the input files.
 import os
 
 __all__ = ["REGIMES", "MANTLE_RHEOLOGIES", "SYSTEMS", "DEFAULT_PARAMS",
-           "ORGANIZE_SCRIPT", "RUN_SCRIPT", "RUN_LAUNCHER", "ZIP_SCRIPT"]
+           "ORGANIZE_SCRIPT", "RUN_SCRIPT", "POST_PROCESSING_SCRIPT", "NO_POST_PROCESSING_SCRIPT",
+           "RUN_LAUNCHER", "ZIP_SCRIPT"]
 
 REGIMES:list = ['rifting', 'compression', 'accordion', 'quiescence']
 """list: Kinematic regimes of the SVG scenarios."""
@@ -35,9 +36,77 @@ touch FD.out
 
 # Moves the outputs to one folder per variable
 bash 0_organize_outputs.sh
+@POST_PROCESSING@'''
 
+#End of the run script without post-processing (post_processing=False)
+NO_POST_PROCESSING_SCRIPT = '''
 # Zips the inputs and the outputs (skips the files already in the zip)
 # bash zipper.sh
+'''
+
+#Post-processing of the run script (@POST_PROCESSING@ of RUN_SCRIPT, NO_POST_PROCESSING_SCRIPT with
+#post_processing=False): the .nc files with the Julia scripts of tapioca, the snapshots and the video of the
+#scenario with plot_snapshots.py and frames_generator.py of post_processing (https://github.com/jopmas/post_processing),
+#then the zip of the scenario (zipper.sh) and the removal of the output files that are in the zip.
+POST_PROCESSING_SCRIPT = '''
+# Post-processing: .nc files (Julia scripts of tapioca), snapshots and video of the scenario (plot_snapshots.py
+# and frames_generator.py of post_processing), zip of the scenario and removal of the output files.
+# TAPIOCA_DIR, POST_PROCESSING_DIR, JULIA and PYTHON set in the environment override the values below.
+# A step is skipped, with a message, if what it needs is not found.
+TAPIOCA_DIR=${TAPIOCA_DIR:-@TAPIOCA_DIR@}
+POST_PROCESSING_DIR=${POST_PROCESSING_DIR:-@POST_PROCESSING_DIR@}
+JULIA=${JULIA:-julia}
+PYTHON=${PYTHON:-python}
+
+if command -v "$JULIA" > /dev/null && [ -f "$TAPIOCA_DIR/src/postrunning/meshes2netcdf.jl" ]; then
+    "$JULIA" -t $NUMBER_OF_CORES "$TAPIOCA_DIR/src/postrunning/meshes2netcdf.jl" "$PWD"
+    if [ -d steps ]; then
+        # last step as reference step: the tracking scripts of post_processing select the particles there
+        LAST_STEP=$(find time -maxdepth 1 -name "time_*.txt" | sed -E 's|.*time_([0-9]+)\\.txt|\\1|' | grep -E '^[0-9]+$' | sort -n | tail -1)
+        "$JULIA" -t $NUMBER_OF_CORES "$TAPIOCA_DIR/src/postrunning/particles2netcdf.jl" "$PWD" "$LAST_STEP"
+    fi
+else
+    echo "Julia ($JULIA) or $TAPIOCA_DIR/src/postrunning not found: the .nc files were not created."
+fi
+
+if [ -f lithology.nc ] && [ -f "$POST_PROCESSING_DIR/plot_snapshots.py" ]; then
+    "$PYTHON" "$POST_PROCESSING_DIR/plot_snapshots.py"
+    "$PYTHON" "$POST_PROCESSING_DIR/frames_generator.py"
+else
+    echo "lithology.nc or $POST_PROCESSING_DIR not found: the snapshots and the video were not made."
+fi
+
+# Zips the inputs and the outputs (skips the files already in the zip)
+bash zipper.sh
+
+# Removes the output files (folders of 0_organize_outputs.sh and bc_velocity_*.txt) only if the zip is fine and
+# has all of them. The inputs, the .nc files and the figures are kept. The lists are made with find and compared
+# in files, never expanded in the command line, to avoid the "argument list too long" error.
+ZIP="$(basename "$PWD").zip"
+OUTPUT_FOLDERS="time density heat pressure surface strain_rate strain temperature viscosity velocity thermal_diffusivity X_depletion Phi dPhi lithos steps"
+LISTS=$(mktemp -d)
+for folder in $OUTPUT_FOLDERS; do
+    if [ -d "$folder" ]; then find "$folder" -type f; fi
+done > "$LISTS/outputs"
+find . -maxdepth 1 -type f -name "bc_velocity_*.txt" | sed 's|^\\./||' >> "$LISTS/outputs"
+LC_ALL=C sort -u -o "$LISTS/outputs" "$LISTS/outputs"
+
+if [ -f "$ZIP" ] && unzip -tq "$ZIP" > /dev/null; then
+    zipinfo -1 "$ZIP" | LC_ALL=C sort -u > "$LISTS/zipped"
+    MISSING=$(LC_ALL=C comm -23 "$LISTS/outputs" "$LISTS/zipped" | wc -l | tr -d ' ')
+    if [ "$MISSING" -eq 0 ]; then
+        for folder in $OUTPUT_FOLDERS; do
+            if [ -d "$folder" ]; then rm -rf "./$folder"; fi
+        done
+        find . -maxdepth 1 -type f -name "bc_velocity_*.txt" -delete
+        echo "Output files removed: they are in $ZIP"
+    else
+        echo "$MISSING output file(s) are not in $ZIP: the output files were kept."
+    fi
+else
+    echo "$ZIP was not created or is damaged: the output files were kept."
+fi
+rm -rf "$LISTS"
 '''
 
 #caffeinate keeps the Mac awake while Mandyoc runs

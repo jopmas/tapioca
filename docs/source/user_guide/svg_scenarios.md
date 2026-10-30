@@ -32,7 +32,24 @@ It also receives the scripts to run the scenario (`--no-scripts` skips them):
   `$PETSC_DIR/$PETSC_ARCH/bin/mpirun` and then moves the outputs to one folder per variable with
   `0_organize_outputs.sh`. On the Mac, `caffeinate` keeps the computer awake during the run. `PETSC_DIR`,
   `PETSC_ARCH` and `MANDYOC` (the executable) set in the environment override the values of the script;
-  `--ncores` and `--mandyoc-options` set the number of MPI processes and the options of Mandyoc;
+  `--ncores` and `--mandyoc-options` set the number of MPI processes and the options of Mandyoc. After the run,
+  the script post-processes the scenario (`--no-post-processing` skips it):
+  1. creates the `.nc` files with `meshes2netcdf.jl` and, if there is a `steps/` folder, `particles2netcdf.jl` with
+     the last step as reference step (`julia -t <ncores>`);
+  2. makes the snapshots (`plot_snapshots.py`) and the frames and the video (`frames_generator.py`) of the
+     scenario with the scripts of [post_processing](https://github.com/jopmas/post_processing), if
+     `lithology.nc` was created (`export_lithology = True`);
+  3. zips the inputs and the outputs with `zipper.sh`;
+  4. removes the folders of the text outputs (`time/`, `density/`, `lithos/`, `steps/`, ...) and the
+     `bc_velocity_*.txt` files, only if the zip is not damaged (`unzip -t`) and has all of them. The inputs, the
+     `.nc` files and the figures are kept.
+
+  The lists of files are built with `find` and passed through files (`zip -@`, `comm`), never on the command line,
+  so a scenario with many outputs does not give the error *argument list too long*. tapioca and post_processing
+  are read from `~/opt/tapioca` and `~/opt/post_processing`, or from the variables `TAPIOCA_DIR` and
+  `POST_PROCESSING_DIR` (given when the script is written or when it runs); `JULIA` and `PYTHON` set the
+  executables (default: `julia` and `python`, so activate the `tapioca` environment before running). A step whose
+  script is not found is skipped with a message;
 - `0_organize_outputs.sh`: copy of `src/postrunning/0_organize_outputs.sh`;
 - `zipper.sh`: zips the inputs and the outputs in `<folder>.zip`, skipping the files already in the zip,
   so it can be run again to add new outputs.

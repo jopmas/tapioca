@@ -68,6 +68,10 @@ Another system, the number of MPI processes and the options of Mandyoc may be gi
 tapioca-svg rifting.svg -o my_scenario --system linux --ncores 20 --mandyoc-options="-seed 0,5,8 -strain_seed 0.0,1.0,1.0"
 ```
 
+After Mandyoc, the run script creates the `.nc` files, the snapshots and the video of the scenario, zips it and
+removes the text outputs (see [SVG scenarios](../user_guide/svg_scenarios.md)); `--no-post-processing`
+(`write_all(..., post_processing=False)`) writes the script without these steps.
+
 ---
 
 ## Geometry and materials from SVG files

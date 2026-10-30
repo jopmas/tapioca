@@ -6,6 +6,7 @@ Command line interface of the scenario builder:
                 [--magmatism off] [--magmatism-extraction off] [--magmatism-Ts0 1080]
                 [--preset-initial-temperature path/to/preliminary] [--min-thickness 1] [--no-plots]
                 [--system linux] [--ncores 20] [--mandyoc-options="-seed 0,5,8 -strain_seed 0.0,1.0,1.0"] [--no-scripts]
+                [--no-post-processing]
 
 The options override the settings of the SVG (description of the shape labelled "setup").
 '''
@@ -55,6 +56,8 @@ def main(argv=None):
     parser.add_argument('--ncores', type=int, help='number of MPI processes in the run script (default: number of cores of this computer)')
     parser.add_argument('--mandyoc-options', default='', help='command line options of Mandyoc in the run script')
     parser.add_argument('--no-scripts', action='store_true', help='do not create the run script, 0_organize_outputs.sh and zipper.sh')
+    parser.add_argument('--no-post-processing', action='store_true', help='run script without the post-processing (.nc files, '
+                                                                          'snapshots and video of the scenario)')
     args = parser.parse_args(argv)
 
     try:
@@ -67,7 +70,8 @@ def main(argv=None):
                                magmatic_layer=args.magmatic_layer,
                                min_thickness=args.min_thickness)
         scenario.write_all(args.output_dir, plots=not args.no_plots, scripts=not args.no_scripts, system=args.system,
-                           ncores=args.ncores, mandyoc_options=args.mandyoc_options)
+                           ncores=args.ncores, mandyoc_options=args.mandyoc_options,
+                           post_processing=not args.no_post_processing)
     except SVGInputError as err:
         sys.exit(f"Error: {err}")
 

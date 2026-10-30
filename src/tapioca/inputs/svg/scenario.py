@@ -47,6 +47,7 @@ from ..._aux_functions import find_nearest, read_preset_temperature, adapt_prese
 from ..generic_input_classes import TemperatureFieldBuilder, VelocityFieldBuilder, VerboseExtension
 from ..checks import SVGChecks
 from ._variables import (REGIMES, MANTLE_RHEOLOGIES, SYSTEMS, DEFAULT_PARAMS, ORGANIZE_SCRIPT, RUN_SCRIPT,
+                         POST_PROCESSING_SCRIPT, NO_POST_PROCESSING_SCRIPT,
                          RUN_LAUNCHER, ZIP_SCRIPT)
 from .materials import MandyocLayer, BASALT
 from ... import __version__
@@ -506,11 +507,17 @@ class SVGScenario(SVGChecks, VerboseExtension):
     ###########################################################################
 
     def write_scripts(self, output_dir='.', system=None, ncores=None, mandyoc_options='',
-                      petsc_dir=None, petsc_arch=None, mandyoc=None):
+                      petsc_dir=None, petsc_arch=None, mandyoc=None, post_processing=True,
+                      tapioca_dir=None, post_processing_dir=None):
         '''
         Write the scripts of the scenario in output_dir:
           - run_linux.sh or run_mac.sh: runs Mandyoc with mpirun of PETSc and then moves the outputs to one
-            folder per variable with 0_organize_outputs.sh (on the Mac, caffeinate keeps it awake);
+            folder per variable with 0_organize_outputs.sh (on the Mac, caffeinate keeps it awake). With
+            post_processing, it then creates the .nc files with src/postrunning/meshes2netcdf.jl and
+            particles2netcdf.jl (last step as reference step), makes the snapshots and the video of the scenario
+            with plot_snapshots.py and frames_generator.py of post_processing
+            (https://github.com/jopmas/post_processing), zips the scenario with zipper.sh and removes the output
+            files (only if the zip is fine and has all of them); a step is skipped if what it needs is not found;
           - 0_organize_outputs.sh: copy of src/postrunning/0_organize_outputs.sh;
           - zipper.sh: zips the scenario in <folder>.zip, skipping the files already in the zip.
 
@@ -527,6 +534,12 @@ class SVGScenario(SVGChecks, VerboseExtension):
             executable. Default: PETSC_DIR and PETSC_ARCH of the environment, or $HOME/opt/petsc and the
             only arch-* folder in it with mpirun (arch-label-optimized if there is none or more than one),
             and $HOME/opt/mandyoc/bin/mandyoc. Values set in the environment when the script runs override them.
+        post_processing : bool, optional
+            Add the post-processing to the run script (default: True).
+        tapioca_dir, post_processing_dir : str, optional
+            Folders of tapioca and of post_processing used by the post-processing. Default: TAPIOCA_DIR and
+            POST_PROCESSING_DIR of the environment, or $HOME/opt/tapioca and $HOME/opt/post_processing. Values
+            set in the environment when the script runs override them (also JULIA and PYTHON, the programs).
         '''
         this_system = {'Linux': 'linux', 'Darwin': 'mac'}.get(platform.system())
         if(system is None):
@@ -552,14 +565,19 @@ class SVGScenario(SVGChecks, VerboseExtension):
             mandyoc = '$HOME/opt/mandyoc/bin/mandyoc'
         if(ncores is None):
             ncores = os.cpu_count() or 1
+        if(tapioca_dir is None):
+            tapioca_dir = os.environ.get('TAPIOCA_DIR', '$HOME/opt/tapioca')
+        if(post_processing_dir is None):
+            post_processing_dir = os.environ.get('POST_PROCESSING_DIR', '$HOME/opt/post_processing')
 
         os.makedirs(output_dir, exist_ok=True)
         path = lambda fname: os.path.join(output_dir, fname)
 
-        run = RUN_SCRIPT
+        run = RUN_SCRIPT.replace('@POST_PROCESSING@', POST_PROCESSING_SCRIPT if(post_processing) else NO_POST_PROCESSING_SCRIPT)
         for key, value in [('PETSC_DIR', petsc_dir), ('PETSC_ARCH', petsc_arch), ('MANDYOC', mandyoc),
                            ('NCORES', int(ncores)), ('MANDYOC_OPTIONS', mandyoc_options),
-                           ('LAUNCHER', RUN_LAUNCHER[system])]:
+                           ('LAUNCHER', RUN_LAUNCHER[system]), ('TAPIOCA_DIR', tapioca_dir),
+                           ('POST_PROCESSING_DIR', post_processing_dir)]:
             run = run.replace(f'@{key}@', str(value))
         scripts = {f'run_{system}.sh': run, 'zipper.sh': ZIP_SCRIPT}
         with open(ORGANIZE_SCRIPT) as f:
@@ -570,16 +588,17 @@ class SVGScenario(SVGChecks, VerboseExtension):
                 f.write(text)
             os.chmod(path(fname), 0o755)
         if(self.verbose):
-            print(f"Scripts: {', '.join(scripts)} ({system}, {int(ncores)} cores)")
+            print(f"Scripts: {', '.join(scripts)} ({system}, {int(ncores)} cores"
+                  f"{', with post-processing' if(post_processing) else ''})")
 
     def write_all(self, output_dir='.', plots=True, copy_svg=True, scripts=True, system=None, ncores=None,
-                  mandyoc_options='', **params):
+                  mandyoc_options='', post_processing=True, **params):
         '''
         Write the input files of Mandyoc in output_dir: interfaces.txt, param.txt, input_temperature_0.txt,
         input_velocity_0.txt, vel_bc.txt, velz_bc.txt and scale_bcv.txt (accordion), the scenario infos
         (infos_<folder>.txt), a copy of the SVG and the figures numerical_setup.png and initial_temperature.png.
-        With scripts, also the run script of Mandyoc for system ('linux' or 'mac'), 0_organize_outputs.sh and
-        zipper.sh (see write_scripts).
+        With scripts, also the run script of Mandyoc for system ('linux' or 'mac'), with the post-processing
+        if post_processing, 0_organize_outputs.sh and zipper.sh (see write_scripts).
         Keyword arguments change parameters of param.txt (see parameters).
         '''
         os.makedirs(output_dir, exist_ok=True)
@@ -616,7 +635,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
                     f.write(self.scale_bcv())
 
         if(scripts):
-            self.write_scripts(output_dir, system=system, ncores=ncores, mandyoc_options=mandyoc_options)
+            self.write_scripts(output_dir, system=system, ncores=ncores, mandyoc_options=mandyoc_options,
+                               post_processing=post_processing)
 
         if(plots):
             self.plot_temperature(path('initial_temperature.png'))

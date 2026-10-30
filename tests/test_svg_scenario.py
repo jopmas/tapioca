@@ -1,5 +1,6 @@
 """Tests of the SVG scenarios (tapioca.inputs.svg.SVGScenario) and of the command line tools."""
 
+import re
 import shutil
 import sys
 
@@ -44,6 +45,16 @@ def test_input_files(written):
     for fname in expected:
         assert (folder / fname).is_file(), fname
     assert (folder / "input_velocity_0.txt").exists() == (SVG_SCENARIOS[name][0] != "quiescence")
+
+
+def test_run_script_post_processing(written):
+    name, scenario, folder = written
+    run = (folder / "run_linux.sh").read_text()
+    assert re.search(r"@[A-Z_]+@", run) is None
+    for command in ["bash 0_organize_outputs.sh", "meshes2netcdf.jl", "particles2netcdf.jl", "plot_snapshots.py",
+                    "frames_generator.py", "bash zipper.sh", "unzip -tq", "comm -23"]:
+        assert command in run, command
+    assert run.index("mpirun") < run.index("meshes2netcdf.jl") < run.index("bash zipper.sh") < run.index("rm -rf")
 
 
 def test_param_txt_matches_the_scenario(written):
@@ -270,6 +281,15 @@ def test_cli_tapioca_svg(tmp_path):
                   "--no-scripts", "--regime", "accordion", "--quiescence-time", "10"])
     assert _read_params(tmp_path)["variable_bcv"] == "True"
     assert (tmp_path / "scale_bcv.txt").is_file()
+
+
+def test_cli_tapioca_svg_no_post_processing(tmp_path):
+    with quiet():
+        cli.main([str(svg_path("rifting")), "-o", str(tmp_path), "--dx", "10", "--dz", "10", "--no-plots",
+                  "--system", "linux", "--no-post-processing"])
+    run = (tmp_path / "run_linux.sh").read_text()
+    assert "bash 0_organize_outputs.sh" in run and "# bash zipper.sh" in run
+    assert "meshes2netcdf.jl" not in run and "rm -rf" not in run
 
 
 def test_cli_tapioca_svg_error_message(tmp_path):

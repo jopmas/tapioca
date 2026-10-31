@@ -38,6 +38,7 @@ dependencies = [
 [project.scripts]
 tapioca-svg = "tapioca.inputs.svg.cli:main"
 tapioca-svg-interfaces = "tapioca.inputs.svg.reader:main"
+tapioca-svg-from-state = "tapioca.inputs.svg.from_state:main"
 
 
 # Future implementations!!

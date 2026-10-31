@@ -64,8 +64,9 @@ as text in setup["experiment"] and read by the
 scenario builder (tapioca.inputs.svg.SVGScenario): regime (rifting, compression, accordion, quiescence), velocity
 (e.g. 1 cm/yr), moving_boundary (left, right or symmetric), time_max (e.g. 100 Myr),
 quiescence_time (e.g. 0 Myr), magmatism (on or off), magmatism_extraction (on or off)
-magmatism_Ts0 (e.g. 1080, in oC) and preset_initial_temperature (folder or .nc file of a
-preliminary scenario whose final thermal state is used as initial temperature).
+magmatism_Ts0 (e.g. 1080, in oC), preset_initial_temperature (folder or .nc file of a
+preliminary scenario whose final thermal state is used as initial temperature), preset_temperature_mode
+(profile or field) and preset_time (e.g. 10 Myr).
 
 Without a setup shape the SVG page is the domain and Lx, Lz, Nx must be given.
 x and z are scaled independently, so the drawing may be vertically
@@ -137,7 +138,7 @@ SETUP_LABEL = "setup"  # label (or id) of the shape that gives the model domain,
 MIN_THICKNESS = 1.0e3  # default min_thickness [m]: thinner pieces of units drawn thicker elsewhere are removed (see remove_slivers)
 EXPERIMENT_KEYS = ("regime", "velocity", "moving_boundary", "time_max", "quiescence_time",
                    "magmatism", "magmatism_extraction", "magmatism_Ts0", "preset_initial_temperature",
-                   "temperature_solver", "water_layer", "magmatic_layer")  # settings of the experiment in the domain description
+                   "preset_temperature_mode", "preset_time", "temperature_solver", "water_layer", "magmatic_layer")  # settings of the experiment in the domain description
 
 # key in the description -> parameter of interfaces.txt: the keys of DEFAULT_MATERIAL (rho, C, H, ...) and their
 # names in INTERFACES_PARAMETERS (density, scale_factor, radiogenic_heat, ...)
@@ -392,6 +393,27 @@ def shape_to_mplpath(shape, n_curve=32):
     return MplPath(np.array(verts), codes)
 
 
+## NOTE (Claude): MplPath.contains_points fills the holes of a path with several subpaths (e.g. a unit around a lens,
+## as the SVGs of tapioca-svg-from-state have), so each subpath is tested alone and they are combined with the
+## fill rule of the shape
+def path_contains(mpath, points, fill_rule="nonzero"):
+    '''
+    Points inside a matplotlib Path with one or more subpaths (closed polygons), with the SVG fill rule:
+    'nonzero' (default of SVG; a subpath drawn in the opposite direction is a hole) or 'evenodd' (a point
+    inside an even number of subpaths is outside).
+    '''
+    polygons = [p for p in mpath.to_polygons(closed_only=False) if len(p) >= 3]
+    if len(polygons) <= 1:
+        return mpath.contains_points(points)
+    winding = np.zeros(len(points), dtype=int)
+    for polygon in polygons:
+        x, y = polygon[:, 0], polygon[:, 1]
+        sign = 1 if 0.5 * np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y) >= 0 else -1  #orientation
+        inside = MplPath(polygon).contains_points(points)
+        winding += np.where(inside, sign if fill_rule == "nonzero" else 1, 0)
+    return (winding % 2 == 1) if fill_rule == "evenodd" else (winding != 0)
+
+
 def rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id=None):
     '''
     Sample the SVG on a (Nzs, Nx) grid and return the unit index of each point (-1 = empty)
@@ -438,7 +460,8 @@ def rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id=None):
         if not sel.any():
             continue
         inside = np.zeros(len(pts), dtype=bool)
-        inside[sel] = mpath.contains_points(pts[sel])
+        ## NOTE (Claude): holes of the shape kept (path_contains), with its fill rule
+        inside[sel] = path_contains(mpath, pts[sel], str(el.values.get("fill-rule", "nonzero")).strip().lower())
         covered = inside & (grid.ravel() != iunit)
         under.ravel()[covered] = grid.ravel()[covered]
         grid.ravel()[inside] = iunit

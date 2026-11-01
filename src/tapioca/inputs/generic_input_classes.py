@@ -1498,13 +1498,11 @@ class TemperatureFieldBuilder:
         the interfaces and fields (i.e., `create_materials_fields()`
         must have been called).
 
-    LAB_interface : str, int or array-like, optional
+    LAB_interface : str or int, optional
         Identifier (interface name or `id` attribute) of the
         Lithosphere-Asthenosphere Boundary. The temperature at this
         interface is prescribed as `t_pot` (set via
-        `apply_linear_temperature`). It may also be the z [m] of the
-        LAB along x (Nx values), when the LAB is not a single interface
-        (e.g. when it goes from one interface to another along x).
+        `apply_linear_temperature`).
 
         Default is `0`, which under the standard Mandyoc numbering
         convention selects the lowermost (basal) interface. Override this
@@ -1670,7 +1668,7 @@ class TemperatureFieldBuilder:
     '''
 
     def __init__(self, scenarioBuilder:MandyocBuilder, 
-                 LAB_interface:str|int|np.ndarray=0, surface_interface:str|int=None,
+                 LAB_interface:str|int=0, surface_interface:str|int=None,
                  c_cap:float=1250.0,g:float=-10.0,alpha:float=3.28e-5):
 
 
@@ -1704,13 +1702,7 @@ class TemperatureFieldBuilder:
         if surface_interface == None:
             surface_interface = len(self.interfaces) - 2 #getting the penultimate interface as surface
 
-        ## FIX (Claude): the LAB may also be given as its z along x, for scenarios where it is not a single interface
-        ## (SVGScenario finds it column by column, since a deformed state may have more than one asthenosphere layer)
-        if isinstance(LAB_interface, (str, int, np.integer)):
-            self.LAB_interface = get_interface(self.interfaces,LAB_interface)
-        else:
-            self.LAB_interface = xr.DataArray(np.asarray(LAB_interface, dtype=np.float64).reshape(self.Nx),
-                                              dims=('x',), coords={'x':self.x}, name='LAB')
+        self.LAB_interface = get_interface(self.interfaces,LAB_interface)
         self.surface_interface = get_interface(self.interfaces,surface_interface)
 
         self.lithosphere_thickness = self.surface_interface - self.LAB_interface

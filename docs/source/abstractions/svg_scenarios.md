@@ -159,7 +159,7 @@ flowchart TD
     Properties*): the first line of the description is the rheology, the next lines are `key = value` (`C`, `rho`
     and `H` are required; `h` is the reference thickness). `rasterize` maps the bounding box of the setup shape to the
     domain and samples the drawing (`Nx` columns, rows of 100 m), painting the shapes in document order as Inkscape
-    does (a path with several subpaths keeps its holes, with its `fill-rule`, see `path_contains`); it also keeps the unit painted over (`under`), the host of seeds and basins. `fill_gaps` fills the points
+    does; it also keeps the unit painted over (`under`), the host of seeds and basins. `fill_gaps` fills the points
     not covered by any shape and `remove_slivers` removes thin layers left by shapes that overlap a little.
 *   **Columns to one stack:** each interface of Mandyoc is a single line `z(x)`, so one stack must fit every column.
     `build_stack` joins the sequences of units of the columns with the shortest common supersequence (`scs`), e.g.
@@ -187,32 +187,6 @@ flowchart LR
 
 *   **Interfaces:** ID `i` is the top of layer `i` and carries its material; ID `-1` is the sticky air.
 *   **Surface and LAB:** the surface is the top of the solid layers (the base of the sticky air, or of the water
-    when `water_layer` is given). The LAB is found column by column (`SVGScenario._find_lab`): going down from the
-    surface, the top of the first asthenosphere slot with some thickness. With one asthenosphere slot (a drawn
-    scenario) it is the top of that slot; in a deformed state the asthenosphere may have more than one slot (e.g.
-    a lens in the lithospheric mantle), and a lithospheric body inside the asthenosphere stays below the LAB. The
-    surface is passed by ID to `TemperatureFieldBuilder`; the LAB is passed as its `z` along `x`.
+    when `water_layer` is given); the LAB is the top of the asthenosphere. Both are passed by ID to
+    `TemperatureFieldBuilder` and to `set_kinematic_regime`.
 *   **Water and magmatic layers:** chosen by the user (label or ID), never guessed from their position.
-
----
-
-## 4. Scenarios that start from the final state of a simulation
-
-```mermaid
-flowchart LR
-    RUN["Mandyoc scenario<br/>lithology.nc, temperature.nc, interfaces.txt"] -->|"tapioca-svg-from-state"| SVG["SVG of the final state<br/>one path per unit<br/>setup: preset_temperature_mode = field"]
-    SVG -->|"tapioca-svg"| IN["inputs of the new scenario<br/>geometry of the SVG, 2D temperature of the state"]
-    RUN -.->|"temperature.nc"| IN
-```
-
-*   **Geometry:** `from_state.state_to_svg` rasterizes the lithology of the state (last time, or `--time`) on cells
-    of `--cell` km, removes bodies smaller than `--min-area` and writes one path per unit, with the parameters of
-    `interfaces.txt` in its description. The units are labelled from their parameters (`unit_labels`), or with
-    `--labels`. A boundary column made only of air (the last column of the `lithology.nc` of `meshes2netcdf.jl`)
-    takes the column next to it.
-*   **Temperature:** `preset_temperature_mode = field` (setup of the SVG, argument or `--preset-temperature-mode`)
-    makes `build_temperature` interpolate the 2D field of `preset_initial_temperature` (at `preset_time`, or the
-    last time) on the grid, with 0 oC in the sticky air, without the steady-state solver. The domain must be the
-    same as the one of the preliminary scenario. `profile` (the default) keeps the horizontal mean adapted to the
-    lithosphere of each column, for a new scenario drawn on any domain.
-*   **Not kept:** the accumulated strain and the melt of the state.

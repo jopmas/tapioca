@@ -18,8 +18,6 @@ experiment:
     magmatism_extraction = off
     magmatism_Ts0 = 1080
     preset_initial_temperature = ../preliminary
-    preset_temperature_mode = profile          (profile or field)
-    preset_time = 10 Myr
     temperature_solver = 2D                    (2D or columns)
     min_thickness = 1 km
 
@@ -45,8 +43,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 from ..._variables import SEC_PER_YEAR, PARAMS_TYPES
-from ..._aux_functions import (find_nearest, read_preset_temperature, adapt_preset_temperature,
-                               read_preset_temperature_field, interpolate_preset_temperature_field)
+from ..._aux_functions import find_nearest, read_preset_temperature, adapt_preset_temperature
 from ..generic_input_classes import TemperatureFieldBuilder, VelocityFieldBuilder, VerboseExtension
 from ..checks import SVGChecks
 from ._variables import (REGIMES, MANTLE_RHEOLOGIES, SYSTEMS, DEFAULT_PARAMS, ORGANIZE_SCRIPT, RUN_SCRIPT,
@@ -116,15 +113,6 @@ class SVGScenario(SVGChecks, VerboseExtension):
         scenario (see tapioca.read_preset_temperature): the horizontal mean of its final
         temperature, adapted to the lithosphere of the SVG, is the initial temperature. A relative path in the
         SVG is relative to the folder of the SVG. Default: none (conductive model).
-    preset_temperature_mode : str, optional
-        How the temperature of preset_initial_temperature is used: 'profile' (its horizontal mean adapted to the
-        lithosphere of each column, for a new scenario drawn on any domain) or 'field' (its 2D field
-        interpolated on the grid, with 0 oC in the sticky air, for a scenario that starts from the final state
-        of the preliminary scenario, e.g. an SVG made by tapioca-svg-from-state; the domain must be the same).
-        Default: profile.
-    preset_time : float or str, optional
-        Time of the field of preset_initial_temperature [Myr] in the 'field' mode, the nearest one of its
-        NetCDF file. Default: the last one.
     temperature_solver : str, optional
         Steady-state conduction in the lithosphere of the conductive model: '2D' (the whole lithosphere at once,
         so heat also flows sideways where the layers change along x) or 'columns' (each column alone).
@@ -227,22 +215,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
         self.surface_id = len(self.layers) - 2 if(self.water_layer is None) else self.water_layer - 1
         self.thickness_sa = self.layers[self.surface_id + 1].interface #depth of the surface
         self.idx_ast = max(layer_indices(self.layers, asthenosphere_label))
-        ## NOTE (Claude): the LAB was the top of the highest asthenosphere slot (idx_ast) in every column. In a
-        ## deformed state (e.g. an SVG made from the final state of a simulation) the asthenosphere may get more
-        ## than one slot, and where the highest one has zero thickness the LAB fell on the base of the crust (32 km
-        ## instead of 129 km at the edges of the final state of the rift). The LAB is now found column by column
-        ## (_find_lab); with one asthenosphere slot it is the same as before.
-        self.idx_lab = self._find_lab()
-        columns = np.arange(self.Nx)
-        self.thickness_litho = np.zeros(self.Nx) #surface to the top of the asthenosphere (LAB)
+        self.thickness_litho = self.layers[self.idx_ast+1].interface - self.thickness_sa #surface to the top of the asthenosphere
         self.thickness_mantle = np.zeros(self.Nx) #lithospheric mantle (olivine rheologies above the asthenosphere)
-        for i in range(len(self.layers) - 1):
-            ## NOTE (Claude): top of the LAB slot of each column, instead of the top of idx_ast in all of them
-            above = self.idx_lab == i
-            self.thickness_litho[above] = self.layers[i+1].interface[above] - self.thickness_sa[above]
-            ## NOTE (Claude): mantle above the LAB of each column, instead of above idx_ast in all of them
+        for i in range(self.idx_ast + 1, len(self.layers)):
             if(self.layers[i].rheology_name in MANTLE_RHEOLOGIES):
-                self.thickness_mantle += np.where(self.idx_lab < i, slot_thickness(self.layers, i, columns), 0.0)
+                self.thickness_mantle += slot_thickness(self.layers, i, slice(None))
 
         #position of the vertical profile of the scenario infos and the profiles of the plots
         self.x_profile = self.Lx / 4.0
@@ -327,17 +304,6 @@ class SVGScenario(SVGChecks, VerboseExtension):
             base = os.path.dirname(os.path.abspath(self.svg_file)) if(self.source['preset_initial_temperature'] == 'SVG') else None
             preset = self._check_path('preset_initial_temperature', preset, base)
         self.preset_initial_temperature = preset
-        ## NOTE (Claude): the final state of the preliminary scenario may be used as a 2D field (scenario that starts
-        ## from that state) instead of its horizontal mean (profile, the only mode before)
-        self.preset_temperature_mode = self._check_choice('preset_temperature_mode', setting('preset_temperature_mode', 'profile'),
-                                                          ['profile', 'field'])
-        self.preset_time = setting('preset_time', None, 'time', 'Myr', 1.0e-6) #Myr
-        if(self.preset_time is not None):
-            self.preset_time = self._check_number('preset_time', self.preset_time, 0)
-        if(self.preset_initial_temperature is None and self.source['preset_temperature_mode'] != 'default'):
-            self._fail("preset_temperature_mode needs preset_initial_temperature.")
-        if(self.preset_time is not None and self.preset_temperature_mode != 'field'):
-            self._fail("preset_time is used only with preset_temperature_mode = field.")
 
         self.temperature_solver = self._check_choice('temperature_solver', setting('temperature_solver', '2D'),
                                                      ['2D', 'columns'], aliases={'1D': 'columns'})
@@ -377,27 +343,6 @@ class SVGScenario(SVGChecks, VerboseExtension):
                         f"({self.source['preset_initial_temperature']})")
 
     ###########################################################################
-    # Lithosphere-asthenosphere boundary
-    ###########################################################################
-
-    def _find_lab(self):
-        '''
-        Slot of the stack whose top is the LAB in each column (Nx): going down from the surface, the first
-        asthenosphere slot with some thickness in the column. With one asthenosphere slot (a drawn initial
-        scenario) it is that slot in every column. In a deformed state (e.g. the final state of a simulation)
-        the asthenosphere may get more than one slot, with zero thickness in most columns, and the highest one
-        would put the LAB at the base of the crust there; a lithospheric body inside the asthenosphere (e.g. a
-        drip) stays below the LAB. Columns without asthenosphere take the highest asthenosphere slot.
-        '''
-        idx_lab = np.full(self.Nx, self.idx_ast)
-        found = np.zeros(self.Nx, dtype=bool)
-        for i in sorted(layer_indices(self.layers, self.asthenosphere_label), reverse=True):
-            filled = ~found & (slot_thickness(self.layers, i, np.arange(self.Nx)) > 0)
-            idx_lab[filled] = i
-            found |= filled
-        return idx_lab
-
-    ###########################################################################
     # Profiles for the plots
     ###########################################################################
 
@@ -416,8 +361,7 @@ class SVGScenario(SVGChecks, VerboseExtension):
         has_seed = np.zeros(Nx, dtype=bool)
         for i in layer_indices(layers, self.seed_label):
             has_seed |= slot_thickness(layers, i, slice(None)) > 0
-        ## NOTE (Claude): unit at the base of the lithosphere above the LAB of each column (was above idx_ast)
-        base_unit = np.array([next((layers[i].layer_label for i in range(self.idx_lab[ix] + 1, len(layers))
+        base_unit = np.array([next((layers[i].layer_label for i in range(self.idx_ast + 1, len(layers))
                                     if slot_thickness(layers, i, ix) > 0), '') for ix in range(Nx)])
         litho_key = np.array([f"{litho_km[ix]}|{base_unit[ix]}" if(not has_seed[ix]) else '' for ix in range(Nx)])
         edges = np.r_[0, np.nonzero(litho_key[1:] != litho_key[:-1])[0] + 1, Nx]
@@ -432,8 +376,7 @@ class SVGScenario(SVGChecks, VerboseExtension):
         colors = self.profile_colors[-len(regions):] if(len(regions) <= len(self.profile_colors)) else self.profile_colors
         for k, ((thickness, unit), (begin, end)) in enumerate(sorted(regions.items())):
             ix = (begin + end - 1) // 2
-            ## NOTE (Claude): mantle unit above the LAB of the column of the profile (was above idx_ast)
-            i_mantle = next((i for i in range(self.idx_lab[ix] + 1, len(layers)) if slot_thickness(layers, i, ix) > 0), self.idx_lab[ix] + 1)
+            i_mantle = next((i for i in range(self.idx_ast + 1, len(layers)) if slot_thickness(layers, i, ix) > 0), self.idx_ast + 1)
             name = layers[i_mantle].title.replace(' lith. mantle', '').replace(' lithospheric mantle', '')
             profiles.append((ix, f"{name} ({thickness:.0f} km)", colors[k % len(colors)]))
         if(len(profiles) == 0):
@@ -454,17 +397,12 @@ class SVGScenario(SVGChecks, VerboseExtension):
           mantle adiabat below the LAB (TemperatureFieldBuilder.apply_linear_temperature). temperature_solver
           '2D' (default) solves the whole lithosphere at once (solve_heat_2D), so lateral conduction follows the
           geometry of the layers; 'columns' solves each column alone (solve_heat_1D);
-        - with preset_initial_temperature and preset_temperature_mode = profile: the final thermal state of the
-          preliminary scenario (horizontal mean) adapted to the lithosphere of each column;
-        - with preset_initial_temperature and preset_temperature_mode = field: the 2D field of the preliminary
-          scenario (at preset_time, or the last one) interpolated on the grid, with 0 oC in the sticky air. No
-          solver is run: the scenario starts from that thermal state (and from its geometry, drawn in the SVG).
+        - with preset_initial_temperature: the final thermal state of the preliminary scenario adapted to the
+          lithosphere of each column.
 
         The field is also the temperature of the builder (self.builder.DTree.fields.temperature).
         '''
-        ## NOTE (Claude): the LAB is given as its z along x (column by column, _find_lab) instead of the interface
-        ## idx_ast, which is the LAB only when the asthenosphere has one slot
-        self.temperature_builder = TemperatureFieldBuilder(self.builder, LAB_interface=-(self.thickness_sa + self.thickness_litho),
+        self.temperature_builder = TemperatureFieldBuilder(self.builder, LAB_interface=self.idx_ast,
                                                            surface_interface=self.surface_id, c_cap=self.ccapacity)
         if(self.preset_initial_temperature is None):
             self.temperature_builder.apply_linear_temperature(t_pot=self.TP)
@@ -472,23 +410,6 @@ class SVGScenario(SVGChecks, VerboseExtension):
                 self.temperature_builder.solve_heat_2D()
             else:
                 self.temperature_builder.solve_heat_1D()
-        ## NOTE (Claude): 2D field of the preliminary scenario as it is (scenario that starts from its final state),
-        ## without the steady-state solver, whose field would be replaced
-        elif(self.preset_temperature_mode == 'field'):
-            try:
-                T_preset, self.preset_source = read_preset_temperature_field(self.preset_initial_temperature, self.preset_time)
-            except (FileNotFoundError, ValueError) as err:
-                raise SVGInputError(f"preset_initial_temperature: {err}")
-            Lx_preset = float(T_preset.x[-1] - T_preset.x[0])
-            Lz_preset = float(T_preset.z[-1] - T_preset.z[0])
-            if(not (np.isclose(Lx_preset, self.Lx) and np.isclose(Lz_preset, self.Lz))):
-                self._fail(f"preset_temperature_mode = field: the domain of the SVG ({self.Lx/1.0e3:g} x {self.Lz/1.0e3:g} km) "
-                           f"differs from the one of the preliminary scenario ({Lx_preset/1.0e3:g} x {Lz_preset/1.0e3:g} km).")
-            tb = self.temperature_builder
-            tb.t_pot = self.TP
-            tb.temperature.values = interpolate_preset_temperature_field(T_preset, tb.temperature.x.values, tb.temperature.z.values,
-                                                                         -tb.surface_interface.values)
-            self._print_verbose(f"Preset of initial temperature (2D field): {self.preset_source}")
         else:
             try:
                 depth, T_preset, sa_preset, litho_preset, self.preset_source = read_preset_temperature(self.preset_initial_temperature)
@@ -776,8 +697,6 @@ class SVGScenario(SVGChecks, VerboseExtension):
         if(self.preset_initial_temperature is None):
             lines += [f"\tSteady-state conduction in the lithosphere ({self.temperature_solver} solver)",
                       f"\tMantle potential temperature (at the LAB): {self.TP} oC"]
-        elif(self.preset_temperature_mode == 'field' and hasattr(self, 'preset_source')):
-            lines += [f"\tPreliminary scenario: {self.preset_source}, 2D field (preset_temperature_mode = field)"]
         elif(hasattr(self, 'preset_source')):
             lines += [f"\tPreliminary scenario: {self.preset_source}",
                       f"\tReference lithosphere of the preliminary scenario: {self.thickness_litho_preset/1.0e3:.0f} km"]

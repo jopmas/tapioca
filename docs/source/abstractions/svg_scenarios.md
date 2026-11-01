@@ -159,7 +159,7 @@ flowchart TD
     Properties*): the first line of the description is the rheology, the next lines are `key = value` (`C`, `rho`
     and `H` are required; `h` is the reference thickness). `rasterize` maps the bounding box of the setup shape to the
     domain and samples the drawing (`Nx` columns, rows of 100 m), painting the shapes in document order as Inkscape
-    does; it also keeps the unit painted over (`under`), the host of seeds and basins. `fill_gaps` fills the points
+    does (a path with several subpaths keeps its holes, with its `fill-rule`, see `path_contains`); it also keeps the unit painted over (`under`), the host of seeds and basins. `fill_gaps` fills the points
     not covered by any shape and `remove_slivers` removes thin layers left by shapes that overlap a little.
 *   **Columns to one stack:** each interface of Mandyoc is a single line `z(x)`, so one stack must fit every column.
     `build_stack` joins the sequences of units of the columns with the shortest common supersequence (`scs`), e.g.
@@ -187,6 +187,9 @@ flowchart LR
 
 *   **Interfaces:** ID `i` is the top of layer `i` and carries its material; ID `-1` is the sticky air.
 *   **Surface and LAB:** the surface is the top of the solid layers (the base of the sticky air, or of the water
-    when `water_layer` is given); the LAB is the top of the asthenosphere. Both are passed by ID to
-    `TemperatureFieldBuilder` and to `set_kinematic_regime`.
+    when `water_layer` is given). The LAB is found column by column (`SVGScenario._find_lab`): going down from the
+    surface, the top of the first asthenosphere slot with some thickness. With one asthenosphere slot (a drawn
+    scenario) it is the top of that slot; in a deformed state the asthenosphere may have more than one slot (e.g.
+    a lens in the lithospheric mantle), and a lithospheric body inside the asthenosphere stays below the LAB. The
+    surface is passed by ID to `TemperatureFieldBuilder`; the LAB is passed as its `z` along `x`.
 *   **Water and magmatic layers:** chosen by the user (label or ID), never guessed from their position.

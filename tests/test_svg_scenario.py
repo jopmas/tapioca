@@ -14,7 +14,7 @@ from tapioca.inputs.svg import cli, reader
 
 from tapioca import read_preset_temperature
 
-from conftest import CONTINENTAL_RIFT, SVG_SCENARIOS, build_scenario, quiet, svg_path
+from conftest import COARSE, CONTINENTAL_RIFT, SVG_SCENARIOS, build_scenario, quiet, svg_path
 
 
 @pytest.fixture(scope="module", params=list(SVG_SCENARIOS))
@@ -271,6 +271,58 @@ def test_figures(tmp_path):
         scenario.write_all(str(tmp_path), plots=True, scripts=False)
     for fname in ["numerical_setup.png", "initial_temperature.png"]:
         assert (tmp_path / fname).stat().st_size > 10_000
+
+
+# LAB ###############################################################################
+
+BODY = """    <rect id="{label}_body" inkscape:label="{label}" x="400" y="{y}" width="200" height="10" style="fill:#000000;stroke:none">
+      <desc id="desc_{label}_body">{desc}</desc>
+    </rect>
+    <rect id="weak_seed\""""
+
+
+def _rifting_with_body(tmp_path, label, y):
+    """The rifting example with a 10 km body of the unit label (with its description) at depth y [km], 400-600 km."""
+    text = svg_path("rifting").read_text()
+    desc = re.search(rf'inkscape:label="{label}".*?<desc[^>]*>(.*?)</desc>', text, re.S).group(1)
+    svg = tmp_path / f"rifting_{label}_body.svg"
+    svg.write_text(text.replace('    <rect id="weak_seed"', BODY.format(label=label, y=y, desc=desc), 1))
+    with quiet():
+        return SVGScenario(str(svg), verbose=False, **COARSE)
+
+
+## NOTE (Claude): an asthenosphere lens in the lithospheric mantle gives the asthenosphere a second slot, with zero
+## thickness out of the lens; the LAB was the top of that slot in every column (60 km of lithosphere everywhere)
+def test_lab_with_an_asthenosphere_lens_in_the_mantle(tmp_path):
+    scenario = _rifting_with_body(tmp_path, "asthenosphere", 100)
+    x = scenario.x / 1e3
+    assert len(reader.layer_indices(scenario.layers, "asthenosphere")) == 2
+    np.testing.assert_allclose(scenario.thickness_litho[(x > 410) & (x < 590)], 60e3)  #top of the lens
+    np.testing.assert_allclose(scenario.thickness_litho[(x < 350) | (x > 650)], 155e3)  #base of the mantle
+    with quiet():
+        scenario.build_temperature()
+    np.testing.assert_allclose(scenario.temperature_builder.lithosphere_thickness.values, scenario.thickness_litho)
+
+
+def test_lab_above_a_lithospheric_body_in_the_asthenosphere(tmp_path):
+    scenario = _rifting_with_body(tmp_path, "lithospheric_mantle", 250)
+    assert len(reader.layer_indices(scenario.layers, "asthenosphere")) == 2
+    np.testing.assert_allclose(scenario.thickness_litho, 155e3)
+
+
+## NOTE (Claude): matplotlib fills the holes of a path with several subpaths (a unit around a lens)
+@pytest.mark.parametrize("hole_clockwise, fill_rule, hole_inside", [(True, "nonzero", False), (False, "nonzero", True),
+                                                                    (False, "evenodd", False)])
+def test_path_contains_keeps_the_holes(hole_clockwise, fill_rule, hole_inside):
+    from matplotlib.path import Path as MplPath
+    outer = [(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)]
+    hole = [(4, 4), (6, 4), (6, 6), (4, 6), (4, 4)]
+    if(hole_clockwise):
+        hole = hole[::-1]
+    codes = [MplPath.MOVETO] + [MplPath.LINETO] * 3 + [MplPath.CLOSEPOLY]
+    mpath = MplPath(np.array(outer + hole, dtype=float), codes * 2)
+    inside = reader.path_contains(mpath, np.array([[5.0, 5.0], [2.0, 2.0], [12.0, 5.0]]), fill_rule)
+    assert inside.tolist() == [hole_inside, True, False]
 
 
 # Command line ######################################################################

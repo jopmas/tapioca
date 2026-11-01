@@ -215,11 +215,22 @@ class SVGScenario(SVGChecks, VerboseExtension):
         self.surface_id = len(self.layers) - 2 if(self.water_layer is None) else self.water_layer - 1
         self.thickness_sa = self.layers[self.surface_id + 1].interface #depth of the surface
         self.idx_ast = max(layer_indices(self.layers, asthenosphere_label))
-        self.thickness_litho = self.layers[self.idx_ast+1].interface - self.thickness_sa #surface to the top of the asthenosphere
+        ## NOTE (Claude): the LAB was the top of the highest asthenosphere slot (idx_ast) in every column. In a
+        ## deformed state (e.g. an SVG made from the final state of a simulation) the asthenosphere may get more
+        ## than one slot, and where the highest one has zero thickness the LAB fell on the base of the crust (32 km
+        ## instead of 129 km at the edges of the final state of the rift). The LAB is now found column by column
+        ## (_find_lab); with one asthenosphere slot it is the same as before.
+        self.idx_lab = self._find_lab()
+        columns = np.arange(self.Nx)
+        self.thickness_litho = np.zeros(self.Nx) #surface to the top of the asthenosphere (LAB)
         self.thickness_mantle = np.zeros(self.Nx) #lithospheric mantle (olivine rheologies above the asthenosphere)
-        for i in range(self.idx_ast + 1, len(self.layers)):
+        for i in range(len(self.layers) - 1):
+            ## NOTE (Claude): top of the LAB slot of each column, instead of the top of idx_ast in all of them
+            above = self.idx_lab == i
+            self.thickness_litho[above] = self.layers[i+1].interface[above] - self.thickness_sa[above]
+            ## NOTE (Claude): mantle above the LAB of each column, instead of above idx_ast in all of them
             if(self.layers[i].rheology_name in MANTLE_RHEOLOGIES):
-                self.thickness_mantle += slot_thickness(self.layers, i, slice(None))
+                self.thickness_mantle += np.where(self.idx_lab < i, slot_thickness(self.layers, i, columns), 0.0)
 
         #position of the vertical profile of the scenario infos and the profiles of the plots
         self.x_profile = self.Lx / 4.0
@@ -343,6 +354,27 @@ class SVGScenario(SVGChecks, VerboseExtension):
                         f"({self.source['preset_initial_temperature']})")
 
     ###########################################################################
+    # Lithosphere-asthenosphere boundary
+    ###########################################################################
+
+    def _find_lab(self):
+        '''
+        Slot of the stack whose top is the LAB in each column (Nx): going down from the surface, the first
+        asthenosphere slot with some thickness in the column. With one asthenosphere slot (a drawn initial
+        scenario) it is that slot in every column. In a deformed state (e.g. the final state of a simulation)
+        the asthenosphere may get more than one slot, with zero thickness in most columns, and the highest one
+        would put the LAB at the base of the crust there; a lithospheric body inside the asthenosphere (e.g. a
+        drip) stays below the LAB. Columns without asthenosphere take the highest asthenosphere slot.
+        '''
+        idx_lab = np.full(self.Nx, self.idx_ast)
+        found = np.zeros(self.Nx, dtype=bool)
+        for i in sorted(layer_indices(self.layers, self.asthenosphere_label), reverse=True):
+            filled = ~found & (slot_thickness(self.layers, i, np.arange(self.Nx)) > 0)
+            idx_lab[filled] = i
+            found |= filled
+        return idx_lab
+
+    ###########################################################################
     # Profiles for the plots
     ###########################################################################
 
@@ -361,7 +393,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         has_seed = np.zeros(Nx, dtype=bool)
         for i in layer_indices(layers, self.seed_label):
             has_seed |= slot_thickness(layers, i, slice(None)) > 0
-        base_unit = np.array([next((layers[i].layer_label for i in range(self.idx_ast + 1, len(layers))
+        ## NOTE (Claude): unit at the base of the lithosphere above the LAB of each column (was above idx_ast)
+        base_unit = np.array([next((layers[i].layer_label for i in range(self.idx_lab[ix] + 1, len(layers))
                                     if slot_thickness(layers, i, ix) > 0), '') for ix in range(Nx)])
         litho_key = np.array([f"{litho_km[ix]}|{base_unit[ix]}" if(not has_seed[ix]) else '' for ix in range(Nx)])
         edges = np.r_[0, np.nonzero(litho_key[1:] != litho_key[:-1])[0] + 1, Nx]
@@ -376,7 +409,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         colors = self.profile_colors[-len(regions):] if(len(regions) <= len(self.profile_colors)) else self.profile_colors
         for k, ((thickness, unit), (begin, end)) in enumerate(sorted(regions.items())):
             ix = (begin + end - 1) // 2
-            i_mantle = next((i for i in range(self.idx_ast + 1, len(layers)) if slot_thickness(layers, i, ix) > 0), self.idx_ast + 1)
+            ## NOTE (Claude): mantle unit above the LAB of the column of the profile (was above idx_ast)
+            i_mantle = next((i for i in range(self.idx_lab[ix] + 1, len(layers)) if slot_thickness(layers, i, ix) > 0), self.idx_lab[ix] + 1)
             name = layers[i_mantle].title.replace(' lith. mantle', '').replace(' lithospheric mantle', '')
             profiles.append((ix, f"{name} ({thickness:.0f} km)", colors[k % len(colors)]))
         if(len(profiles) == 0):
@@ -402,7 +436,9 @@ class SVGScenario(SVGChecks, VerboseExtension):
 
         The field is also the temperature of the builder (self.builder.DTree.fields.temperature).
         '''
-        self.temperature_builder = TemperatureFieldBuilder(self.builder, LAB_interface=self.idx_ast,
+        ## NOTE (Claude): the LAB is given as its z along x (column by column, _find_lab) instead of the interface
+        ## idx_ast, which is the LAB only when the asthenosphere has one slot
+        self.temperature_builder = TemperatureFieldBuilder(self.builder, LAB_interface=-(self.thickness_sa + self.thickness_litho),
                                                            surface_interface=self.surface_id, c_cap=self.ccapacity)
         if(self.preset_initial_temperature is None):
             self.temperature_builder.apply_linear_temperature(t_pot=self.TP)

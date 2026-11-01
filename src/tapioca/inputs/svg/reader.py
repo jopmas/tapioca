@@ -392,6 +392,27 @@ def shape_to_mplpath(shape, n_curve=32):
     return MplPath(np.array(verts), codes)
 
 
+## NOTE (Claude): MplPath.contains_points fills the holes of a path with several subpaths (e.g. a unit around a lens,
+## as the SVGs of tapioca-svg-from-state have), so each subpath is tested alone and they are combined with the
+## fill rule of the shape
+def path_contains(mpath, points, fill_rule="nonzero"):
+    '''
+    Points inside a matplotlib Path with one or more subpaths (closed polygons), with the SVG fill rule:
+    'nonzero' (default of SVG; a subpath drawn in the opposite direction is a hole) or 'evenodd' (a point
+    inside an even number of subpaths is outside).
+    '''
+    polygons = [p for p in mpath.to_polygons(closed_only=False) if len(p) >= 3]
+    if len(polygons) <= 1:
+        return mpath.contains_points(points)
+    winding = np.zeros(len(points), dtype=int)
+    for polygon in polygons:
+        x, y = polygon[:, 0], polygon[:, 1]
+        sign = 1 if 0.5 * np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y) >= 0 else -1  #orientation
+        inside = MplPath(polygon).contains_points(points)
+        winding += np.where(inside, sign if fill_rule == "nonzero" else 1, 0)
+    return (winding % 2 == 1) if fill_rule == "evenodd" else (winding != 0)
+
+
 def rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id=None):
     '''
     Sample the SVG on a (Nzs, Nx) grid and return the unit index of each point (-1 = empty)
@@ -438,7 +459,8 @@ def rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id=None):
         if not sel.any():
             continue
         inside = np.zeros(len(pts), dtype=bool)
-        inside[sel] = mpath.contains_points(pts[sel])
+        ## NOTE (Claude): holes of the shape kept (path_contains), with its fill rule
+        inside[sel] = path_contains(mpath, pts[sel], str(el.values.get("fill-rule", "nonzero")).strip().lower())
         covered = inside & (grid.ravel() != iunit)
         under.ravel()[covered] = grid.ravel()[covered]
         grid.ravel()[inside] = iunit

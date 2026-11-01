@@ -36,7 +36,7 @@ TemperatureFieldBuilder and a VelocityFieldBuilder. The input files are exported
 so interfaces.txt has the 13 parameters of tapioca.DEFAULT_MATERIAL.
 '''
 
-import os, glob, shutil, platform
+import os, glob, shutil, platform, zipfile
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -637,13 +637,15 @@ class SVGScenario(SVGChecks, VerboseExtension):
                   f"{', with post-processing' if(post_processing) else ''})")
 
     def write_all(self, output_dir='.', plots=True, copy_svg=True, scripts=True, system=None, ncores=None,
-                  mandyoc_options='', post_processing=True, **params):
+                  mandyoc_options='', post_processing=True, zip_inputs=True, **params):
         '''
         Write the input files of Mandyoc in output_dir: interfaces.txt, param.txt, input_temperature_0.txt,
         input_velocity_0.txt, vel_bc.txt, velz_bc.txt and scale_bcv.txt (accordion), the scenario infos
         (infos_<folder>.txt), a copy of the SVG and the figures numerical_setup.png and initial_temperature.png.
         With scripts, also the run script of Mandyoc for system ('linux' or 'mac'), with the post-processing
         if post_processing, 0_organize_outputs.sh and zipper.sh (see write_scripts).
+        With zip_inputs, the files written are zipped in <folder>.zip, the zip that zipper.sh completes with the
+        outputs of Mandyoc (see zip_inputs).
         Keyword arguments change parameters of param.txt (see parameters).
         '''
         os.makedirs(output_dir, exist_ok=True)
@@ -693,6 +695,39 @@ class SVGScenario(SVGChecks, VerboseExtension):
         if(self.verbose):
             for line in infos:
                 print(line)
+
+        if(zip_inputs):
+            self.zip_inputs(output_dir)
+
+    #files written by write_all (those that exist are zipped by zip_inputs)
+    INPUT_FILES = ['interfaces.txt', 'param.txt', 'input_temperature_0.txt', 'input_velocity_0.txt', 'vel_bc.txt',
+                   'velz_bc.txt', 'scale_bcv.txt', 'numerical_setup.png', 'initial_temperature.png',
+                   'run_linux.sh', 'run_mac.sh', '0_organize_outputs.sh', 'zipper.sh']
+
+    def zip_inputs(self, output_dir='.'):
+        '''
+        Zip the input files of the scenario in output_dir/<folder>.zip: the files of write_all that are in
+        output_dir (INPUT_FILES, infos_<folder>.txt and the copy of the SVG). It is the zip that zipper.sh
+        completes with the outputs of Mandyoc after the run (it skips the files already in the zip). A zip that
+        already has other files (e.g. outputs of a run) is kept as it is. Return the path of the zip, or None if
+        it was kept.
+        '''
+        name = os.path.basename(os.path.abspath(output_dir))
+        target = os.path.join(output_dir, f'{name}.zip')
+        files = self.INPUT_FILES + [f'infos_{name}.txt', os.path.basename(self.svg_file)]
+        files = [fname for fname in dict.fromkeys(files) if os.path.isfile(os.path.join(output_dir, fname))]
+        if(os.path.exists(target)):
+            with zipfile.ZipFile(target) as old:
+                others = sorted(set(old.namelist()) - set(files))
+            if(len(others) > 0):
+                print(f"{target} has other files than the inputs (e.g. {others[0]}): it was kept as it is.")
+                return None
+        with zipfile.ZipFile(target, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for fname in files:
+                zf.write(os.path.join(output_dir, fname), arcname=fname)
+        if(self.verbose):
+            print(f"Inputs zipped in {target} ({len(files)} files)")
+        return target
 
     ###########################################################################
     # Scenario infos

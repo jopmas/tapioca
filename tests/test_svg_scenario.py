@@ -3,6 +3,7 @@
 import re
 import shutil
 import sys
+import zipfile
 
 import numpy as np
 import pytest
@@ -45,6 +46,32 @@ def test_input_files(written):
     for fname in expected:
         assert (folder / fname).is_file(), fname
     assert (folder / "input_velocity_0.txt").exists() == (SVG_SCENARIOS[name][0] != "quiescence")
+
+
+def test_inputs_zip(written):
+    '''write_all zips the input files in <folder>.zip, the zip that zipper.sh completes with the outputs.'''
+    name, scenario, folder = written
+    with zipfile.ZipFile(folder / f"{folder.name}.zip") as zf:
+        zipped = sorted(zf.namelist())
+        assert zf.testzip() is None
+    inputs = sorted(f.name for f in folder.iterdir() if f.is_file() and f.suffix != ".zip")
+    assert zipped == inputs
+
+
+def test_inputs_zip_with_outputs_is_kept(tmp_path):
+    '''A zip that already has outputs of a run is not replaced by the zip of the inputs.'''
+    scenario = build_scenario("rifting")
+    target = tmp_path / f"{tmp_path.name}.zip"
+    with zipfile.ZipFile(target, "w") as zf:
+        zf.writestr("param.txt", "old")
+        zf.writestr("time/time_0.txt", "output")
+    with quiet():
+        scenario.write_all(str(tmp_path), plots=False, scripts=False)
+    with zipfile.ZipFile(target) as zf:
+        assert sorted(zf.namelist()) == ["param.txt", "time/time_0.txt"]
+    with quiet():
+        scenario.write_all(str(tmp_path / "no_zip"), plots=False, scripts=False, zip_inputs=False)
+    assert not (tmp_path / "no_zip" / "no_zip.zip").exists()
 
 
 def test_run_script_post_processing(written):

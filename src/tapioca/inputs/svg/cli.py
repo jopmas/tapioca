@@ -63,7 +63,7 @@ def main(argv=None):
     parser.add_argument('--ncores', type=int, help='number of MPI processes in the run script (default: number of cores of this computer)')
     parser.add_argument('--mandyoc-options', default='', help='command line options of Mandyoc in the run script')
     parser.add_argument('--no-scripts', action='store_true', help='do not create the run script, 0_organize_outputs.sh and zipper.sh')
-    parser.add_argument('--no-zip', action='store_true', help='do not zip the input files in <folder>.zip')
+    parser.add_argument('--no-zip', action='store_true', help='do not zip the input files in inputs_<folder>.zip')
     parser.add_argument('--no-post-processing', action='store_true', help='run script without the post-processing (.nc files, '
                                                                           'snapshots and video of the scenario)')
     args = parser.parse_args(argv)

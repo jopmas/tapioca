@@ -329,6 +329,21 @@ def test_cli_tapioca_svg_no_post_processing(tmp_path):
     assert "meshes2netcdf.jl" not in run and "rm -rf" not in run
 
 
+@pytest.mark.parametrize("system, kwargs, lookup", [("mac", {}, True), ("mac", {"petsc_env": "my-petsc"}, True),
+                                                     ("mac", {"petsc_dir": "/petsc"}, False),
+                                                     ("mac", {"petsc_env": None}, False), ("linux", {}, False)])
+def test_run_script_petsc_env_lookup(tmp_path, system, kwargs, lookup):
+    '''run_mac.sh looks for the PETSc of the conda environment petsc_env before the one of petsc_dir.'''
+    scenario = build_scenario("rifting")
+    scenario.write_scripts(str(tmp_path), system=system, ncores=2, **kwargs)
+    run = (tmp_path / f"run_{system}.sh").read_text()
+    assert re.search(r"@[A-Z_]+@", run) is None
+    assert ("conda env list" in run) == lookup
+    if(lookup):
+        assert f"PETSC_ENV=${{PETSC_ENV:-{kwargs.get('petsc_env', 'petsc-env')}}}" in run
+        assert run.index("conda env list") < run.index("PETSC_DIR=${PETSC_DIR:-") < run.index("mpirun -n")
+
+
 def test_cli_tapioca_svg_error_message(tmp_path):
     with pytest.raises(SystemExit, match="Error"):
         cli.main([str(tmp_path / "missing.svg"), "-o", str(tmp_path)])

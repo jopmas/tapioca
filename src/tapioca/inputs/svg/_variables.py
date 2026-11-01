@@ -7,7 +7,7 @@ import os
 
 __all__ = ["REGIMES", "MANTLE_RHEOLOGIES", "SYSTEMS", "DEFAULT_PARAMS",
            "ORGANIZE_SCRIPT", "RUN_SCRIPT", "POST_PROCESSING_SCRIPT", "NO_POST_PROCESSING_SCRIPT",
-           "RUN_LAUNCHER", "ZIP_SCRIPT"]
+           "RUN_LAUNCHER", "PETSC_ENV", "PETSC_ENV_LOOKUP", "ZIP_SCRIPT"]
 
 REGIMES:list = ['rifting', 'compression', 'accordion', 'quiescence']
 """list: Kinematic regimes of the SVG scenarios."""
@@ -24,13 +24,14 @@ ORGANIZE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..',
 RUN_SCRIPT = '''#!/usr/bin/env bash
 # Runs Mandyoc and moves the outputs to one folder per variable (0_organize_outputs.sh). Created by tapioca.
 # PETSC_DIR, PETSC_ARCH and MANDYOC set in the environment override the values below.
-
+@PETSC_ENV_LOOKUP@
 PETSC_DIR=${PETSC_DIR:-@PETSC_DIR@}
 PETSC_ARCH=${PETSC_ARCH-@PETSC_ARCH@}
 MANDYOC=${MANDYOC:-@MANDYOC@}
 NUMBER_OF_CORES=@NCORES@
 MANDYOC_OPTIONS="@MANDYOC_OPTIONS@"
 
+echo "mpirun: $PETSC_DIR/$PETSC_ARCH/bin/mpirun"
 touch FD.out
 @LAUNCHER@$PETSC_DIR/$PETSC_ARCH/bin/mpirun -n $NUMBER_OF_CORES $MANDYOC $MANDYOC_OPTIONS | tee FD.out
 
@@ -111,6 +112,36 @@ rm -rf "$LISTS"
 
 #caffeinate keeps the Mac awake while Mandyoc runs
 RUN_LAUNCHER = {'linux': '', 'mac': 'caffeinate -i '}
+
+PETSC_ENV:str = 'petsc-env'
+"""str: Conda environment with the PETSc (and MPI) that Mandyoc is linked to on the Mac."""
+
+#Lookup of the PETSc of a conda environment (@PETSC_ENV_LOOKUP@ of RUN_SCRIPT, written for the Mac): if
+#PETSC_DIR is not set in the environment, the run script uses the PETSc of the conda environment PETSC_ENV
+#(conda env list, then the usual conda folders) when it has bin/mpirun. The mpirun of another MPI starts
+#N separate Mandyoc runs of 1 process each (singletons) that write the same files.
+PETSC_ENV_LOOKUP = '''
+# PETSc of the conda environment PETSC_ENV (the one Mandyoc is linked to), unless PETSC_DIR is set
+PETSC_ENV=${PETSC_ENV:-@PETSC_ENV@}
+if [ -z "$PETSC_DIR" ]; then
+    PETSC_ENV_DIRS=""
+    if command -v conda > /dev/null; then
+        PETSC_ENV_DIRS=$(conda env list 2> /dev/null | awk -v env="$PETSC_ENV" '$1 == env {print $NF}')
+    fi
+    for prefix in $PETSC_ENV_DIRS "$HOME/miniconda3/envs/$PETSC_ENV" "$HOME/miniforge3/envs/$PETSC_ENV" \\
+                  "$HOME/anaconda3/envs/$PETSC_ENV" "/opt/miniconda3/envs/$PETSC_ENV" \\
+                  "/opt/homebrew/Caskroom/miniforge/base/envs/$PETSC_ENV"; do
+        if [ -x "$prefix/bin/mpirun" ]; then
+            PETSC_DIR="$prefix"
+            PETSC_ARCH=""
+            break
+        fi
+    done
+    if [ -z "$PETSC_DIR" ]; then
+        echo "PETSc of the conda environment $PETSC_ENV not found: using the PETSc below."
+    fi
+fi
+'''
 
 #Zips the scenario in <folder>.zip, skipping the files already in the zip. The outputs are in the
 #folders created by 0_organize_outputs.sh.

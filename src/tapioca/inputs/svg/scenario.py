@@ -51,7 +51,7 @@ from ..generic_input_classes import TemperatureFieldBuilder, VelocityFieldBuilde
 from ..checks import SVGChecks
 from ._variables import (REGIMES, MANTLE_RHEOLOGIES, SYSTEMS, DEFAULT_PARAMS, ORGANIZE_SCRIPT, RUN_SCRIPT,
                          POST_PROCESSING_SCRIPT, NO_POST_PROCESSING_SCRIPT,
-                         RUN_LAUNCHER, ZIP_SCRIPT)
+                         RUN_LAUNCHER, PETSC_ENV, PETSC_ENV_LOOKUP, ZIP_SCRIPT)
 from .materials import MandyocLayer, BASALT
 from ... import __version__
 from .reader import (SVGInputError, SETUP_LABEL, MIN_THICKNESS, EXPERIMENT_KEYS, SVG_VERSION, INKSCAPE_VERSION,
@@ -587,10 +587,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
 
     def write_scripts(self, output_dir='.', system=None, ncores=None, mandyoc_options='',
                       petsc_dir=None, petsc_arch=None, mandyoc=None, post_processing=True,
-                      tapioca_dir=None, post_processing_dir=None):
+                      tapioca_dir=None, post_processing_dir=None, petsc_env=PETSC_ENV):
         '''
         Write the scripts of the scenario in output_dir:
-          - run_linux.sh or run_mac.sh: runs Mandyoc with mpirun of PETSc and then moves the outputs to one
+          - run_linux.sh or run_mac.sh: runs Mandyoc with mpirun of PETSc (run_mac.sh first looks for the PETSc
+            of the conda environment petsc_env) and then moves the outputs to one
             folder per variable with 0_organize_outputs.sh (on the Mac, caffeinate keeps it awake). With
             post_processing, it then creates the .nc files with src/postrunning/meshes2netcdf.jl and
             particles2netcdf.jl (last step as reference step), makes the snapshots and the video of the scenario
@@ -613,6 +614,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
             executable. Default: PETSC_DIR and PETSC_ARCH of the environment, or $HOME/opt/petsc and the
             only arch-* folder in it with mpirun (arch-label-optimized if there is none or more than one),
             and $HOME/opt/mandyoc/bin/mandyoc. Values set in the environment when the script runs override them.
+        petsc_env : str or None, optional
+            Conda environment whose PETSc run_mac.sh uses when PETSC_DIR is not set in the environment
+            (default: 'petsc-env', the PETSc that Mandyoc is linked to; PETSC_ENV in the environment overrides it).
+            The PETSc of petsc_dir and petsc_arch is used if the environment is not found. Ignored on Linux and
+            when petsc_dir is given; None turns the lookup off.
         post_processing : bool, optional
             Add the post-processing to the run script (default: True).
         tapioca_dir, post_processing_dir : str, optional
@@ -631,6 +637,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         if(not os.path.isfile(ORGANIZE_SCRIPT)):
             raise SVGInputError(f"0_organize_outputs.sh not found in {os.path.dirname(os.path.abspath(ORGANIZE_SCRIPT))}.")
 
+        if(system != 'mac' or petsc_dir is not None):
+            petsc_env = None  #an explicit petsc_dir wins over the conda environment
         if(petsc_dir is None):
             petsc_dir = os.environ.get('PETSC_DIR', '$HOME/opt/petsc')
         if(petsc_arch is None):
@@ -653,10 +661,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
         path = lambda fname: os.path.join(output_dir, fname)
 
         run = RUN_SCRIPT.replace('@POST_PROCESSING@', POST_PROCESSING_SCRIPT if(post_processing) else NO_POST_PROCESSING_SCRIPT)
+        run = run.replace('@PETSC_ENV_LOOKUP@', PETSC_ENV_LOOKUP if(petsc_env) else '')
         for key, value in [('PETSC_DIR', petsc_dir), ('PETSC_ARCH', petsc_arch), ('MANDYOC', mandyoc),
                            ('NCORES', int(ncores)), ('MANDYOC_OPTIONS', mandyoc_options),
                            ('LAUNCHER', RUN_LAUNCHER[system]), ('TAPIOCA_DIR', tapioca_dir),
-                           ('POST_PROCESSING_DIR', post_processing_dir)]:
+                           ('POST_PROCESSING_DIR', post_processing_dir), ('PETSC_ENV', petsc_env)]:
             run = run.replace(f'@{key}@', str(value))
         scripts = {f'run_{system}.sh': run, 'zipper.sh': ZIP_SCRIPT}
         with open(ORGANIZE_SCRIPT) as f:

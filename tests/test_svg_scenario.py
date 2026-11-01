@@ -310,6 +310,21 @@ def test_lab_above_a_lithospheric_body_in_the_asthenosphere(tmp_path):
     np.testing.assert_allclose(scenario.thickness_litho, 155e3)
 
 
+## NOTE (Claude): matplotlib fills the holes of a path with several subpaths (a unit around a lens)
+@pytest.mark.parametrize("hole_clockwise, fill_rule, hole_inside", [(True, "nonzero", False), (False, "nonzero", True),
+                                                                    (False, "evenodd", False)])
+def test_path_contains_keeps_the_holes(hole_clockwise, fill_rule, hole_inside):
+    from matplotlib.path import Path as MplPath
+    outer = [(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)]
+    hole = [(4, 4), (6, 4), (6, 6), (4, 6), (4, 4)]
+    if(hole_clockwise):
+        hole = hole[::-1]
+    codes = [MplPath.MOVETO] + [MplPath.LINETO] * 3 + [MplPath.CLOSEPOLY]
+    mpath = MplPath(np.array(outer + hole, dtype=float), codes * 2)
+    inside = reader.path_contains(mpath, np.array([[5.0, 5.0], [2.0, 2.0], [12.0, 5.0]]), fill_rule)
+    assert inside.tolist() == [hole_inside, True, False]
+
+
 # Command line ######################################################################
 
 def test_cli_tapioca_svg(tmp_path):

@@ -444,6 +444,129 @@ def test_run_script_hypatia_options(tmp_path, monkeypatch):
     assert "--mail" not in (tmp_path / "no_mail" / "run_hypatia.sh").read_text()
 
 
+def _thermal_state(folder):
+    '''Thermal parameters of param.txt and the initial temperature written in folder.'''
+    params = _read_params(folder)
+    temperature = np.loadtxt(folder / "input_temperature_0.txt", skiprows=4)
+    return [float(params[name]) for name in THERMAL_NAMES], temperature
+
+
+THERMAL_NAMES = ["heat_capacity", "thermal_expansion_coefficient", "gravity_acceleration"]
+THERMAL_VALUES = dict(zip(THERMAL_NAMES, [700.0, 4.0e-5, 9.8]))
+
+
+def _assert_thermal(scenario):
+    '''The thermal settings of the scenario are those of the temperature builder.'''
+    tb = scenario.temperature_builder
+    assert (tb.c_cap, tb.alpha, -tb.g) == tuple(THERMAL_VALUES.values())
+    assert tuple(getattr(scenario, name) for name in THERMAL_NAMES) == tuple(THERMAL_VALUES.values())
+
+
+@pytest.mark.parametrize("given_to", ["constructor", "write_all", "attributes"])
+def test_thermal_settings_agree_in_param_and_temperature(tmp_path, given_to):
+    (tmp_path / "default").mkdir()
+    scenario = build_scenario("quiescence")
+    with quiet():
+        scenario.write_all(str(tmp_path / "default"), plots=False, scripts=False)
+    assert _thermal_state(tmp_path / "default")[0] == [1250.0, 3.28e-5, 10.0]
+
+    scenario = build_scenario("quiescence", **(THERMAL_VALUES if given_to == "constructor" else {}))
+    if given_to == "attributes":
+        for name, value in THERMAL_VALUES.items():
+            setattr(scenario, name, value)
+    with quiet():
+        scenario.write_all(str(tmp_path), plots=False, scripts=False, **(THERMAL_VALUES if given_to == "write_all" else {}))
+    params, temperature = _thermal_state(tmp_path)
+    assert params == list(THERMAL_VALUES.values())
+    _assert_thermal(scenario)
+    assert not np.allclose(temperature, _thermal_state(tmp_path / "default")[1])
+
+
+def test_ccapacity_is_another_name_of_heat_capacity(tmp_path):
+    scenario = build_scenario("quiescence")
+    scenario.ccapacity = 700.0
+    with quiet():
+        scenario.write_all(str(tmp_path), plots=False, scripts=False)
+    assert _thermal_state(tmp_path)[0][0] == 700.0
+    assert scenario.temperature_builder.c_cap == 700.0
+
+
+def test_thermal_settings_from_the_svg_and_their_priority(tmp_path):
+    text = svg_path("quiescence").read_text()
+    assert "regime" in text
+    svg = tmp_path / "scenario.svg"
+    svg.write_text(re.sub(r"(regime\s*=)", "heat_capacity = 700\n\\1", text, count=1))
+    with quiet():
+        from_svg = SVGScenario(str(svg), verbose=False, dx=COARSE["dx"], dz=COARSE["dz"])
+        argument = SVGScenario(str(svg), verbose=False, dx=COARSE["dx"], dz=COARSE["dz"], heat_capacity=800.0)
+    assert (from_svg.heat_capacity, from_svg.source["heat_capacity"]) == (700.0, "SVG")
+    assert (argument.heat_capacity, argument.source["heat_capacity"]) == (800.0, "argument")
+    assert from_svg.source["gravity_acceleration"] == "default"
+
+
+@pytest.mark.parametrize("settings", [{"heat_capacity": 0}, {"heat_capacity": "abc"}, {"gravity_acceleration": -10},
+                                      {"thermal_expansion_coefficient": -1.0e-5}])
+def test_thermal_settings_invalid(settings):
+    with pytest.raises(SVGInputError):
+        build_scenario("quiescence", **settings)
+
+
+def test_thermal_setting_after_the_temperature_is_an_error(tmp_path):
+    scenario = build_scenario("quiescence")
+    with quiet():
+        scenario.build_temperature()
+        with pytest.raises(SVGInputError, match="heat_capacity"):
+            scenario.write_all(str(tmp_path), plots=False, scripts=False, heat_capacity=700.0)
+        scenario.gravity_acceleration = 9.8
+        with pytest.raises(SVGInputError, match="gravity_acceleration"):
+            scenario.write_all(str(tmp_path), plots=False, scripts=False)
+
+
+def test_yield_strength_envelope_uses_the_gravity():
+    results = []
+    for gravity in (10.0, 5.0):
+        scenario = build_scenario("quiescence", gravity_acceleration=gravity)
+        with quiet():
+            results.append(scenario.yield_strength_envelope(0))
+    assert not np.allclose(results[0], results[1], equal_nan=True)
+
+
+def test_generic_builder_rejects_different_thermal_parameters():
+    scenario = build_scenario("quiescence")
+    with quiet():
+        scenario.build_temperature()
+        scenario.builder.set_params(heat_capacity=1250.0)
+        with pytest.raises(tp.inputs.checks.InputError, match="heat_capacity"):
+            scenario.builder.set_params(heat_capacity=700.0)
+
+    scenario = build_scenario("quiescence")
+    with quiet():
+        scenario.builder.set_params(heat_capacity=700.0)
+        with pytest.raises(tp.inputs.checks.InputError, match="heat_capacity"):
+            scenario.build_temperature()
+
+
+@pytest.mark.parametrize("args", [["--heat-capacity", "700"], ["--heat-capacity=700"], ["--heat_capacity", "700"],
+                                  ["--heat_capacity=700"]])
+def test_cli_heat_capacity_spellings(tmp_path, args):
+    with quiet():
+        cli.main([str(svg_path("quiescence")), "-o", str(tmp_path), "--dx", "10", "--dz", "10", "--no-plots",
+                  "--no-scripts", "--no-zip", *args])
+    assert _thermal_state(tmp_path)[0][0] == 700.0
+
+
+def test_cli_thermal_options(tmp_path):
+    with quiet():
+        cli.main([str(svg_path("quiescence")), "-o", str(tmp_path), "--dx", "10", "--dz", "10", "--no-plots", "--no-scripts",
+                  "--no-zip", "--thermal_expansion_coefficient=4e-5", "--gravity-acceleration", "9.8"])
+    assert _thermal_state(tmp_path)[0] == [1250.0, 4.0e-5, 9.8]
+
+
+def test_cli_invalid_thermal_option(tmp_path):
+    with pytest.raises(SystemExit, match="heat_capacity"):
+        cli.main([str(svg_path("quiescence")), "-o", str(tmp_path), "--heat-capacity", "-1"])
+
+
 def test_cli_tapioca_svg_error_message(tmp_path):
     with pytest.raises(SystemExit, match="Error"):
         cli.main([str(tmp_path / "missing.svg"), "-o", str(tmp_path)])

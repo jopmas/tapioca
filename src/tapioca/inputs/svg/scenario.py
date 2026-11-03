@@ -17,6 +17,9 @@ experiment:
     magmatism = off
     magmatism_extraction = off
     magmatism_Ts0 = 1080
+    heat_capacity = 1250                       (J/kg/K)
+    thermal_expansion_coefficient = 3.28e-5    (1/K)
+    gravity_acceleration = 10                  (m/s2)
     preset_initial_temperature = ../preliminary
     temperature_solver = 2D                    (2D or columns)
     min_thickness = 1 km
@@ -55,6 +58,11 @@ from ... import __version__
 from .reader import (SVGInputError, SETUP_LABEL, MIN_THICKNESS, EXPERIMENT_KEYS, SVG_VERSION, INKSCAPE_VERSION,
                      svg_versions, read_setup, layers_from_svg, layers_to_builder, points_from_spacing, parse_quantity,
                      layer_indices, slot_thickness, layer_thickness)
+
+# (setting, minimum, value must be greater than the minimum): used in param.txt and in the initial temperature
+THERMAL_SETTINGS = (("heat_capacity", 0.0, True),
+                    ("thermal_expansion_coefficient", 0.0, False),
+                    ("gravity_acceleration", 0.0, True))
 
 __all__ = ["SVGScenario", "REGIMES"]
 
@@ -101,6 +109,10 @@ class SVGScenario(SVGChecks, VerboseExtension):
         melt (see magmatic_layer).
     magmatism_Ts0 : float, optional
         magmatism_Ts0 of param.txt [oC]. Default: 1080.
+    heat_capacity, thermal_expansion_coefficient, gravity_acceleration : float, optional
+        Heat capacity [J/kg/K], thermal expansion coefficient [1/K] and gravity (positive) [m/s2]. Each value is
+        used in param.txt, in the initial temperature and in the yield strength envelopes, so they always agree.
+        Plain numbers, without units. Default: 1250, 3.28e-5 and 10 (tapioca.inputs.svg._variables.DEFAULT_PARAMS).
     water_layer : str or int, optional
         Label (or ID from the bottom) of the unit drawn as water, right below the sticky air. The surface (top of
         the solid layers) is then its base. Default: none (no water).
@@ -146,7 +158,15 @@ class SVGScenario(SVGChecks, VerboseExtension):
 
     #Initial temperature (the thermal diffusivity k of each layer comes from its description or rheology)
     TP = 1350.0 #mantle potential temperature [oC], at the LAB
-    ccapacity = 1250.0 #heat capacity [J/kg/K]
+
+    @property
+    def ccapacity(self):
+        '''Heat capacity [J/kg/K]: another name of the setting heat_capacity.'''
+        return self.heat_capacity
+
+    @ccapacity.setter
+    def ccapacity(self, value):
+        self.heat_capacity = value
 
     #Accordion regime [Myr]
     ti_convergence = 25.0
@@ -311,6 +331,9 @@ class SVGScenario(SVGChecks, VerboseExtension):
         self.magmatism_Ts0 = self._check_number('magmatism_Ts0', setting('magmatism_Ts0', 1080.0, 'temperature', 'oC')) #oC
         self._check_experiment(self.regime, self.moving_boundary, self.source, self.magmatism, self.magmatism_extraction)
 
+        for name, minimum, strict in THERMAL_SETTINGS:
+            setattr(self, name, self._check_number(name, setting(name, DEFAULT_PARAMS[name]), minimum, strict))
+
         preset = setting('preset_initial_temperature', None)
         if(preset is not None): #a relative path in the SVG is relative to the folder of the SVG
             base = os.path.dirname(os.path.abspath(self.svg_file)) if(self.source['preset_initial_temperature'] == 'SVG') else None
@@ -350,6 +373,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
                     f"({self.source['velocity']}), moving boundary: {self.moving_boundary} ({self.source['moving_boundary']})")
         self._print_verbose(f"Magmatism: {self.magmatism} ({self.source['magmatism']}), extraction: {self.magmatism_extraction} "
                     f"({self.source['magmatism_extraction']}), Ts0 = {self.magmatism_Ts0:g} oC ({self.source['magmatism_Ts0']})")
+        self._print_verbose("Thermal parameters: " + ', '.join(f"{name} = {getattr(self, name):g} ({self.source[name]})"
+                                                               for name, _, _ in THERMAL_SETTINGS))
         if(self.preset_initial_temperature is not None):
             self._print_verbose(f"Initial temperature from the preliminary scenario {self.preset_initial_temperature} "
                         f"({self.source['preset_initial_temperature']})")
@@ -440,7 +465,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         ## NOTE (Claude): the LAB is given as its z along x (column by column, _find_lab) instead of the interface
         ## idx_ast, which is the LAB only when the asthenosphere has one slot
         self.temperature_builder = TemperatureFieldBuilder(self.builder, LAB_interface=-(self.thickness_sa + self.thickness_litho),
-                                                           surface_interface=self.surface_id, c_cap=self.ccapacity)
+                                                           surface_interface=self.surface_id, c_cap=self.heat_capacity,
+                                                           g=-self.gravity_acceleration, alpha=self.thermal_expansion_coefficient)
         if(self.preset_initial_temperature is None):
             self.temperature_builder.apply_linear_temperature(t_pot=self.TP)
             if(self.temperature_solver == '2D'):
@@ -523,9 +549,10 @@ class SVGScenario(SVGChecks, VerboseExtension):
     def parameters(self, **params):
         '''
         Parameters of param.txt (dict): DEFAULT_PARAMS (tapioca.inputs.svg._variables) and those of the scenario
-        (time_max, velocity and magmatism settings). The grid (nx, nz, lx, lz) and n_interfaces are set by
+        (time_max, velocity, magmatism and thermal settings). The grid (nx, nz, lx, lz) and n_interfaces are set by
         MandyocBuilder.set_params. Any parameter of PARAMS_TYPES can be changed with a keyword argument,
-        e.g. parameters(particles_per_element=100, rheology_model=9).
+        e.g. parameters(particles_per_element=100, rheology_model=9). This only changes the returned values: to
+        change a thermal setting in the whole scenario, use write_all or the setting of the scenario.
         '''
         unknown = [key for key in params if key not in PARAMS_TYPES]
         if(unknown):
@@ -538,7 +565,28 @@ class SVGScenario(SVGChecks, VerboseExtension):
                 'magmatism_extraction': self.magmatism_extraction,
                 'magmatism_Ts0': self.magmatism_Ts0,
                 'magmatic_layer': self.magmatic_layer,
+                **{name: getattr(self, name) for name, _, _ in THERMAL_SETTINGS},
                 **params}
+
+    def _update_thermal_settings(self, params):
+        '''
+        Thermal settings from the keyword arguments of write_all (params). They are also used by the temperature,
+        so an initial temperature already built with other values can not be written with them.
+        '''
+        values = {name: self._check_number(name, params.get(name, getattr(self, name)), minimum, strict)
+                  for name, minimum, strict in THERMAL_SETTINGS}
+        builder = getattr(self, 'temperature_builder', None)
+        if(self.T is not None and builder is not None):
+            built = {'heat_capacity': builder.c_cap, 'thermal_expansion_coefficient': builder.alpha,
+                     'gravity_acceleration': abs(builder.g)}
+            for name, value in values.items():
+                if(not np.isclose(value, built[name])):
+                    self._fail(f"{name} = {value:g}, but the initial temperature was built with {built[name]:g}. "
+                               f"Set {name} before build_temperature (or before the plots, which build it).")
+        for name, value in values.items():
+            setattr(self, name, value)
+            if(name in params):
+                self.source[name] = 'argument'
 
     ###########################################################################
     # Writing the files
@@ -673,8 +721,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
         With scripts, also the run script of Mandyoc for system ('linux', 'mac' or 'hypatia'), with the post-processing
         if post_processing, 0_organize_outputs.sh and zipper.sh (see write_scripts).
         With zip_inputs, the files written are zipped in inputs_<folder>.zip (see zip_inputs).
-        Keyword arguments change parameters of param.txt (see parameters).
+        Keyword arguments change parameters of param.txt (see parameters); heat_capacity,
+        thermal_expansion_coefficient and gravity_acceleration also change the initial temperature, so they
+        must be given before it is built.
         '''
+        self._update_thermal_settings(params)
         os.makedirs(output_dir, exist_ok=True)
         path = lambda fname: os.path.join(output_dir, fname)
 
@@ -790,6 +841,9 @@ class SVGScenario(SVGChecks, VerboseExtension):
         elif(hasattr(self, 'preset_source')):
             lines += [f"\tPreliminary scenario: {self.preset_source}",
                       f"\tReference lithosphere of the preliminary scenario: {self.thickness_litho_preset/1.0e3:.0f} km"]
+        lines += [f"\tHeat capacity: {self.heat_capacity:g} J/kg/K",
+                  f"\tThermal expansion coefficient: {self.thermal_expansion_coefficient:g} 1/K",
+                  f"\tGravity: {self.gravity_acceleration:g} m/s2"]
         lines += [' ', f'magmatism: {self.magmatism}, extraction: {self.magmatism_extraction}, Ts0: {self.magmatism_Ts0:g} oC']
         lines.append('Settings (argument, SVG or default): ' + ', '.join(f"{k}: {v}" for k, v in self.source.items()))
         return lines
@@ -804,7 +858,7 @@ class SVGScenario(SVGChecks, VerboseExtension):
             self.build_temperature()
         fields = self.builder.DTree.fields
         if('YSE' not in fields or fields.YSE.attrs.get('strain_rate') != sr):
-            self.builder.calculate_YSE(sr=sr)
+            self.builder.calculate_YSE(sr=sr, g=-self.gravity_acceleration)
         return self.builder.DTree.fields.YSE.isel(x=ix).values
 
     ## It's a good function to be inside the TemperatureFieldBuilder

@@ -64,8 +64,9 @@ as text in setup["experiment"] and read by the
 scenario builder (tapioca.inputs.svg.SVGScenario): regime (rifting, compression, accordion, quiescence), velocity
 (e.g. 1 cm/yr), moving_boundary (left, right or symmetric), time_max (e.g. 100 Myr),
 quiescence_time (e.g. 0 Myr), magmatism (on or off), magmatism_extraction (on or off)
-magmatism_Ts0 (e.g. 1080, in oC) and preset_initial_temperature (folder or .nc file of a
-preliminary scenario whose final thermal state is used as initial temperature).
+magmatism_Ts0 (e.g. 1080, in oC), heat_capacity (e.g. 1250, in J/kg/K), thermal_expansion_coefficient
+(e.g. 3.28e-5, in 1/K), gravity_acceleration (e.g. 10, in m/s2) and preset_initial_temperature (folder or .nc
+file of a preliminary scenario whose final thermal state is used as initial temperature).
 
 Without a setup shape the SVG page is the domain and Lx, Lz, Nx must be given.
 x and z are scaled independently, so the drawing may be vertically
@@ -140,7 +141,8 @@ MIN_THICKNESS = 1.0e3  # default min_thickness [m]: thinner pieces of units draw
 FULL_WIDTH_TOL = 0.02  # shapes whose sides are this close (fraction of Lx) to both sides of the domain are stretched to them (see rasterize)
 EXPERIMENT_KEYS = ("regime", "velocity", "moving_boundary", "time_max", "quiescence_time",
                    "magmatism", "magmatism_extraction", "magmatism_Ts0", "preset_initial_temperature",
-                   "temperature_solver", "water_layer", "magmatic_layer")  # settings of the experiment in the domain description
+                   "temperature_solver", "water_layer", "magmatic_layer", "heat_capacity",
+                   "thermal_expansion_coefficient", "gravity_acceleration")  # settings of the experiment in the domain description
 
 # key in the description -> parameter of interfaces.txt: the keys of DEFAULT_MATERIAL (rho, C, H, ...) and their
 # names in INTERFACES_PARAMETERS (density, scale_factor, radiogenic_heat, ...)

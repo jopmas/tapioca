@@ -117,8 +117,6 @@ class SVGChecks(InputChecks):
     def _check_experiment(self, regime: str, moving_boundary: str, source: dict, magmatism: str,
                           magmatism_extraction: str) -> None:
         '''Check the combinations of settings of the numerical experiment.'''
-        if moving_boundary == 'symmetric' and regime == 'compression':
-            self._fail("moving_boundary = symmetric is only available in the rifting and accordion regimes.")
         if regime in ['rifting', 'compression'] and source.get('quiescence_time') != 'default':
             self._warn(f"quiescence_time is not used in the {regime} regime.")
         if magmatism_extraction == 'on' and magmatism == 'off':

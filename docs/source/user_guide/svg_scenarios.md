@@ -28,7 +28,8 @@ Examples are in `examples/svg_scenarios`.
 
 It also receives the scripts to run the scenario (`--no-scripts` skips them):
 
-- `run_linux.sh` or `run_mac.sh` (`--system`, default: the system that runs tapioca): runs Mandyoc with
+- `run_linux.sh`, `run_mac.sh` or `run_hypatia.sh` (`--system`, default: the system that runs tapioca; see
+  [Hypatia](#run-on-hypatia) below): runs Mandyoc with
   `$PETSC_DIR/$PETSC_ARCH/bin/mpirun` and then moves the outputs to one folder per variable with
   `0_organize_outputs.sh`. On the Mac, `caffeinate` keeps the computer awake during the run. `PETSC_DIR`,
   `PETSC_ARCH` and `MANDYOC` (the executable) set in the environment override the values of the script;
@@ -54,6 +55,28 @@ It also receives the scripts to run the scenario (`--no-scripts` skips them):
 - `zipper.sh`: zips the inputs and the outputs in `<folder>.zip`, skipping the files already in the zip,
   so it can be run again to add new outputs.
 
+
+(run-on-hypatia)=
+## Run on Hypatia
+
+`--system hypatia` writes `run_hypatia.sh`, a SLURM job for Hypatia, the cluster of the group, which can be written
+on any computer (e.g. the Mac) and submitted on the cluster with `sbatch run_hypatia.sh`:
+
+```bash
+tapioca-svg compression.svg -o compression --system hypatia --mail-user name@usp.br
+```
+
+- the job asks for `--ncores` MPI processes (default: 48) in one node, with the quality of service, the time limit
+  and the modules of `tapioca.inputs.svg._variables.HYPATIA`, and runs Mandyoc with the `mpirun` of the `openmpi`
+  module (`--map-by :OVERSUBSCRIBE`); the number of processes of the run is `SLURM_NTASKS`;
+- `--job-name` names the job (default: `svg-<folder>`); `--mail-user` (or the variable `TAPIOCA_MAIL_USER`, set
+  when the script is written) receives the messages of the job (beginning, end and failure), which are not sent
+  without it;
+- the paths are those of the cluster, not of the computer that writes the script: `$HOME/opt/petsc` with the
+  PETSc arch of `HYPATIA`, `$HOME/opt/mandyoc/bin/mandyoc`, `$HOME/opt/tapioca` and `$HOME/opt/post_processing`.
+  `PETSC_ARCH` is written as a fixed value (`PETSC_ARCH='optimized-v3.24.1-mpich'`), so a `PETSC_ARCH` of the
+  environment of the job does not change it;
+- before the post-processing, the job activates the conda environment `tapioca` (`CONDA_ENV` overrides it).
 ## Units of rock
 
 Each filled shape is a body of rock described by its object properties (Inkscape: *Object > Object Properties*):
@@ -153,7 +176,7 @@ value after a space or `=` (`--heat-capacity 700`, `--heat_capacity=700`). Defau
 |---|---|---|
 | `regime` | `rifting` | `rifting` (extension), `compression` (convergence), `accordion` or `quiescence` |
 | `velocity` | 1 cm/yr | velocity of the moving boundary (with `symmetric`, the sum of both boundaries) |
-| `moving_boundary` | `right` | `left`, `right` or `symmetric` (rifting and accordion) |
+| `moving_boundary` | `right` | `left`, `right` or `symmetric` (both boundaries) |
 | `quiescence_time` | 0 Myr | accordion and quiescence regimes |
 | `time_max` | 60 Myr | rifting and compression; accordion: end of the second extension; quiescence: `quiescence_time` (or 1000 Myr) |
 | `magmatism`, `magmatism_extraction` | `off` | with both `on`, a basalt layer receives the extracted melt (see below) |
@@ -174,9 +197,10 @@ In the rifting and accordion regimes, the velocity is constant from the surface 
 thickest lithosphere of the domain; in the compression regime, down to 20 km below the lithosphere at the
 moving boundary (e.g. an oceanic plate pushed towards a continent), and the opposite boundary is fixed.
 
-With `moving_boundary = symmetric` (rifting and accordion), the reference frame is at the centre of the
-domain: both boundaries move outwards with `velocity`/2, each with its own return flow below the constant
-velocity, so that the integral of the inflow is zero on each boundary. The profiles are set by
+With `moving_boundary = symmetric`, the reference frame is at the centre of the domain: both boundaries move
+with `velocity`/2 (outwards in rifting and accordion, inwards in compression), each with its own return flow
+below the constant velocity, so that the integral of the inflow is zero on each boundary. In compression, the
+constant velocity goes down to 20 km below the thickest lithosphere of the two boundaries. The profiles are set by
 `VelocityFieldBuilder.set_kinematic_regime`.
 
 ## Water and magmatic layers

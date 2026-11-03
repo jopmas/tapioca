@@ -190,9 +190,24 @@ def test_moving_boundary_argument_overrides_the_svg(moving_boundary):
     assert scenario.moving_boundary == moving_boundary and scenario.source["moving_boundary"] == "argument"
 
 
-def test_symmetric_compression_is_an_error():
-    with pytest.raises(SVGInputError, match="symmetric"):
-        build_scenario("compression", moving_boundary="symmetric")
+@pytest.mark.parametrize("moving_boundary", ["left", "right", "symmetric"])
+def test_compression_moving_boundaries(moving_boundary):
+    scenario = build_scenario("compression", moving_boundary=moving_boundary)
+    with quiet():
+        scenario.build_velocity()
+        assert abs(scenario.velocity_builder.integrate_normal_components()) < 1e-15
+    left, right = scenario.VX[:, 0], scenario.VX[:, -1]
+    rock = scenario.Z[:, 0] > scenario.thickness_sa[0] + 5.0e3  # below the surface (Z is the depth): max. inwards velocity in the lithosphere
+    v_ms = scenario.velocity * 0.01 / tp.SEC_PER_YEAR  # cm/yr -> m/s
+    if moving_boundary == "symmetric":
+        np.testing.assert_allclose(right, -left)
+        assert left[rock].max() == pytest.approx(v_ms / 2)
+        litho = scenario.thickness_litho if(scenario.h_v_reference == 'lithosphere') else scenario.thickness_mantle
+        assert scenario.h_v_const == pytest.approx(max(litho[0], litho[-1]) + 20.0e3)
+    else:
+        moving, fixed, inwards = (left, right, 1) if moving_boundary == "left" else (right, left, -1)
+        assert np.all(fixed == 0), "the opposite boundary is fixed"
+        assert (inwards * moving[rock]).max() == pytest.approx(v_ms)
 
 
 def test_param_txt_keyword_arguments(tmp_path):
@@ -385,6 +400,48 @@ def test_run_script_petsc_env_lookup(tmp_path, system, kwargs, lookup):
     if(lookup):
         assert f"PETSC_ENV=${{PETSC_ENV:-{kwargs.get('petsc_env', 'petsc-env')}}}" in run
         assert run.index("conda env list") < run.index("PETSC_DIR=${PETSC_DIR:-") < run.index("mpirun -n")
+
+
+def test_run_script_hypatia(tmp_path, monkeypatch):
+    '''run_hypatia.sh is a SLURM job with the settings of HYPATIA and the paths of the cluster.'''
+    from tapioca.inputs.svg._variables import HYPATIA
+    monkeypatch.setenv("PETSC_DIR", "/petsc/of/this/computer")  # not used on hypatia
+    monkeypatch.delenv("TAPIOCA_MAIL_USER", raising=False)
+    scenario = build_scenario("rifting")
+    folder = tmp_path / "my_scenario"
+    scenario.write_scripts(str(folder), system="hypatia", mail_user="name@usp.br")
+    run = (folder / "run_hypatia.sh").read_text()
+    assert re.search(r"@[A-Z_]+@", run) is None
+    lines = run.splitlines()
+    sbatch = [line for line in lines if line.startswith("#SBATCH")]
+    assert lines[1:1 + len(sbatch)] == sbatch, "the #SBATCH lines come right after the shebang"
+    for option in [f"--ntasks={HYPATIA['ncores']}", f"--qos={HYPATIA['qos']}", f"--time {HYPATIA['time']}",
+                   "--job-name svg-my_scenario", "--mail-user=name@usp.br", "--mail-type=BEGIN,END,FAIL"]:
+        assert any(option in line for line in sbatch), option
+    for module in HYPATIA["modules"]:
+        assert f"module load {module}" in run
+    assert "PETSC_DIR=${PETSC_DIR:-$HOME/opt/petsc}" in run and f"PETSC_ARCH='{HYPATIA['petsc_arch']}'" in run
+    assert f"NUMBER_OF_CORES=${{SLURM_NTASKS:-{HYPATIA['ncores']}}}" in run
+    assert "TAPIOCA_DIR=${TAPIOCA_DIR:-$HOME/opt/tapioca}" in run
+    assert run.index("mpirun -n") < run.index("bash 0_organize_outputs.sh") < run.index("conda activate") \
+        < run.index("meshes2netcdf.jl") < run.index("bash zipper.sh")
+    assert "caffeinate" not in run and "conda env list" not in run
+
+
+def test_run_script_hypatia_options(tmp_path, monkeypatch):
+    monkeypatch.setenv("TAPIOCA_MAIL_USER", "env@usp.br")
+    with quiet():
+        cli.main([str(svg_path("rifting")), "-o", str(tmp_path), "--dx", "10", "--dz", "10", "--no-plots",
+                  "--system", "hypatia", "--ncores", "24", "--job-name", "test", "--no-post-processing"])
+    run = (tmp_path / "run_hypatia.sh").read_text()
+    assert "#SBATCH --ntasks=24" in run and "#SBATCH --job-name test" in run
+    assert "#SBATCH --mail-user=env@usp.br" in run
+    assert "conda activate" not in run and "meshes2netcdf.jl" not in run
+    with zipfile.ZipFile(tmp_path / f"inputs_{tmp_path.name}.zip") as zf:
+        assert "run_hypatia.sh" in zf.namelist()
+    monkeypatch.delenv("TAPIOCA_MAIL_USER")
+    build_scenario("rifting").write_scripts(str(tmp_path / "no_mail"), system="hypatia")
+    assert "--mail" not in (tmp_path / "no_mail" / "run_hypatia.sh").read_text()
 
 
 def _thermal_state(folder):

@@ -105,7 +105,7 @@ def test_velocity_builder_conserves_the_flux(builder):
 
 @pytest.mark.parametrize("regime, moving_boundary", [("extension", "right"), ("extension", "left"),
                                                      ("extension", "symmetric"), ("compression", "right"),
-                                                     ("compression", "left")])
+                                                     ("compression", "left"), ("compression", "symmetric")])
 def test_kinematic_regimes_conserve_the_flux(builder, regime, moving_boundary):
     with quiet():
         v = VelocityFieldBuilder(builder, units="cm/y")
@@ -118,7 +118,8 @@ def test_kinematic_regimes_conserve_the_flux(builder, regime, moving_boundary):
     assert float(left.sel(**air)) == 0 and float(right.sel(**air)) == 0
     if moving_boundary == "symmetric":
         np.testing.assert_allclose(right.values, -left.values)
-        assert float(right.sel(**lithosphere)) == pytest.approx(one / 2)
+        sign = 1 if regime == "extension" else -1  # outwards or inwards
+        assert float(right.sel(**lithosphere)) == pytest.approx(sign * one / 2)
     elif regime == "extension":
         moving = right if moving_boundary == "right" else left
         sign = 1 if moving_boundary == "right" else -1
@@ -128,11 +129,6 @@ def test_kinematic_regimes_conserve_the_flux(builder, regime, moving_boundary):
         sign = -1 if moving_boundary == "right" else 1
         assert float(moving.sel(**lithosphere)) == pytest.approx(sign * one)  # inwards
         assert np.all(fixed.values == 0)
-
-
-def test_symmetric_compression_is_an_error(builder):
-    with quiet(), pytest.raises(ValueError, match="symmetric"):
-        VelocityFieldBuilder(builder).set_kinematic_regime("compression", 1.0, moving_boundary="symmetric")
 
 
 def test_linear_velocity(builder):

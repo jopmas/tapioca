@@ -72,7 +72,9 @@ preliminary scenario whose final thermal state is used as initial temperature), 
 Without a setup shape the SVG page is the domain and Lx, Lz, Nx must be given.
 x and z are scaled independently, so the drawing may be vertically
 exaggerated. Shapes are painted in document order (later shapes cover earlier
-ones), as Inkscape renders them. Points not covered by any shape take the unit
+ones), as Inkscape renders them. Shapes drawn across the domain whose sides are
+within FULL_WIDTH_TOL (2% of Lx) of the sides of the setup shape are stretched to
+them, so the layers do not need to be aligned exactly (see rasterize). Points not covered by any shape take the unit
 of the nearest covered point (see fill_gaps), and thin layers left by shapes
 that overlap a little are removed (see remove_slivers), with warnings.
 
@@ -137,6 +139,7 @@ SVG_VERSION = "1.1"  # version of the SVG format read by tapioca
 INKSCAPE_VERSION = "1.4"  # version of Inkscape (major.minor) used to draw and test the SVG scenarios
 SETUP_LABEL = "setup"  # label (or id) of the shape that gives the model domain, the resolution and the experiment
 MIN_THICKNESS = 1.0e3  # default min_thickness [m]: thinner pieces of units drawn thicker elsewhere are removed (see remove_slivers)
+FULL_WIDTH_TOL = 0.02  # shapes whose sides are this close (fraction of Lx) to both sides of the domain are stretched to them (see rasterize)
 EXPERIMENT_KEYS = ("regime", "velocity", "moving_boundary", "time_max", "quiescence_time",
                    "magmatism", "magmatism_extraction", "magmatism_Ts0", "preset_initial_temperature",
                    "preset_temperature_mode", "preset_time", "temperature_solver", "water_layer", "magmatic_layer",
@@ -416,11 +419,17 @@ def path_contains(mpath, points, fill_rule="nonzero"):
     return (winding % 2 == 1) if fill_rule == "evenodd" else (winding != 0)
 
 
-def rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id=None):
+def rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id=None, full_width_tol=FULL_WIDTH_TOL,
+              verbose=True):
     '''
     Sample the SVG on a (Nzs, Nx) grid and return the unit index of each point (-1 = empty)
     and the unit it covers (the one that would be there without it, -1 = none).
     Also return the fill colour of each unit (from its first shape).
+
+    A shape whose left and right sides are both within full_width_tol * Lx of the sides of the domain is a
+    layer drawn across the whole domain: it is stretched horizontally to reach both sides, so a layer drawn
+    a little inside the setup shape does not leave a strip of the unit below it at the side of the domain
+    (e.g. asthenosphere right under the air, with no lithosphere). 0 turns this off.
     '''
     svg = se.SVG.parse(svg_file, reify=True)
 
@@ -445,6 +454,9 @@ def rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id=None):
     grid = -np.ones(XS.shape, dtype=int)
     under = -np.ones(XS.shape, dtype=int)  # unit covered by the one painted at each point (-1 = none)
     colors = {}
+    tol = full_width_tol * (x1 - x0)
+    pad = 0.5 * (x1 - x0) / max(Nx - 1, 1)  # the stretched sides go half a column beyond the domain
+    stretched = []
     for el in svg.elements():
         if not isinstance(el, se.Shape) or el.id not in shape_unit:
             continue
@@ -458,6 +470,14 @@ def rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id=None):
             continue
         bx0, by0 = mpath.vertices.min(axis=0)
         bx1, by1 = mpath.vertices.max(axis=0)
+        # layer across the domain drawn a little short of a side: stretched to the sides
+        if tol > 0 and abs(bx0 - x0) <= tol and abs(bx1 - x1) <= tol and (bx0 > x0 - pad or bx1 < x1 + pad):
+            nx0, nx1 = min(bx0, x0 - pad), max(bx1, x1 + pad)
+            verts = mpath.vertices.copy()
+            verts[:, 0] = nx0 + (verts[:, 0] - bx0) * (nx1 - nx0) / (bx1 - bx0)
+            mpath = MplPath(verts, mpath.codes)
+            bx0, bx1 = nx0, nx1
+            stretched.append(el.id)
         sel = (pts[:, 0] >= bx0) & (pts[:, 0] <= bx1) & (pts[:, 1] >= by0) & (pts[:, 1] <= by1)
         if not sel.any():
             continue
@@ -468,6 +488,8 @@ def rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id=None):
         under.ravel()[covered] = grid.ravel()[covered]
         grid.ravel()[inside] = iunit
 
+    if verbose and stretched:
+        print(f"Shapes drawn across the domain stretched horizontally to its sides: {', '.join(stretched)}")
     return x, zdepth, dz, grid, under, colors
 
 def scs(a, b):
@@ -799,7 +821,8 @@ def layers_from_svg(svg_file, Lx, Lz, Nx, dz=100.0, setup_id=None, min_thickness
         raise SVGInputError("No shape with description found in the SVG.")
     unit_names = list(units)
 
-    x, zdepth, dz, grid, under, colors = rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id)
+    x, zdepth, dz, grid, under, colors = rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id,
+                                                   verbose=verbose)
     grid, under, _ = fill_gaps(grid, under, Lx / (Nx - 1), dz, verbose=verbose)
     grid, under = remove_slivers(grid, under, dz, Lz, min_thickness, unit_names, verbose=verbose)
     stack, unique, base = build_stack(grid, dz, Lz, unit_names)
@@ -810,6 +833,9 @@ def layers_from_svg(svg_file, Lx, Lz, Nx, dz=100.0, setup_id=None, min_thickness
 
     # scale the units with a reference thickness h
     base, scaling = rescale_thickness(stack, base, grid, under, unit_names, units, Lz, dz)
+    # rounding errors of the scaling (e.g. 40000.00000000001 m) would put an interface just past a grid node, which
+    # then takes the material of the wrong side (e.g. the surface node in the air, which insulates the lithosphere)
+    base = np.round(base, 6)
 
     # one MandyocLayer per unit, copied for each slot of the stack
     unit_layers = []

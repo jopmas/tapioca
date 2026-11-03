@@ -190,9 +190,24 @@ def test_moving_boundary_argument_overrides_the_svg(moving_boundary):
     assert scenario.moving_boundary == moving_boundary and scenario.source["moving_boundary"] == "argument"
 
 
-def test_symmetric_compression_is_an_error():
-    with pytest.raises(SVGInputError, match="symmetric"):
-        build_scenario("compression", moving_boundary="symmetric")
+@pytest.mark.parametrize("moving_boundary", ["left", "right", "symmetric"])
+def test_compression_moving_boundaries(moving_boundary):
+    scenario = build_scenario("compression", moving_boundary=moving_boundary)
+    with quiet():
+        scenario.build_velocity()
+        assert abs(scenario.velocity_builder.integrate_normal_components()) < 1e-15
+    left, right = scenario.VX[:, 0], scenario.VX[:, -1]
+    rock = scenario.Z[:, 0] > scenario.thickness_sa[0] + 5.0e3  # below the surface (Z is the depth): max. inwards velocity in the lithosphere
+    v_ms = scenario.velocity * 0.01 / tp.SEC_PER_YEAR  # cm/yr -> m/s
+    if moving_boundary == "symmetric":
+        np.testing.assert_allclose(right, -left)
+        assert left[rock].max() == pytest.approx(v_ms / 2)
+        litho = scenario.thickness_litho if(scenario.h_v_reference == 'lithosphere') else scenario.thickness_mantle
+        assert scenario.h_v_const == pytest.approx(max(litho[0], litho[-1]) + 20.0e3)
+    else:
+        moving, fixed, inwards = (left, right, 1) if moving_boundary == "left" else (right, left, -1)
+        assert np.all(fixed == 0), "the opposite boundary is fixed"
+        assert (inwards * moving[rock]).max() == pytest.approx(v_ms)
 
 
 def test_param_txt_keyword_arguments(tmp_path):

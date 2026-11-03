@@ -1183,7 +1183,8 @@ class VelocityFieldBuilder:
           through the opposite boundary. With ``moving_boundary='symmetric'`` both boundaries move outwards
           with `velocity`/2 (reference frame at the centre of the domain), each with its own return flow.
         * ``'compression'``: the moving boundary moves inwards with `velocity` and the return flow leaves
-          through the same boundary; the opposite boundary is fixed.
+          through the same boundary; the opposite boundary is fixed. With ``moving_boundary='symmetric'`` both
+          boundaries move inwards with `velocity`/2, each with its own return flow.
 
         Parameters
         ----------
@@ -1195,7 +1196,7 @@ class VelocityFieldBuilder:
             velocities of both boundaries).
 
         moving_boundary: str, optional
-            'left', 'right' or 'symmetric' (extension only).
+            'left', 'right' or 'symmetric'.
 
             Default is 'right'.
 
@@ -1225,8 +1226,6 @@ class VelocityFieldBuilder:
             raise ValueError(f"Unknown regime '{regime}'. Use 'extension' or 'compression'.")
         if moving_boundary not in ['left', 'right', 'symmetric']:
             raise ValueError(f"Unknown moving boundary '{moving_boundary}'. Use 'left', 'right' or 'symmetric'.")
-        if moving_boundary == 'symmetric' and regime == 'compression':
-            raise ValueError("A symmetric moving boundary is only available in extension.")
 
         interfaces = self.scenario.DTree.interfaces.ds
         if surface is None:
@@ -1244,7 +1243,9 @@ class VelocityFieldBuilder:
             return v_const * (h_const + air_gap + ha) / ha
 
         if moving_boundary == 'symmetric':  # each boundary balances its own flux
-            profiles = {b: (velocity / 2, return_velocity(velocity, surf[b]), surf[b]) for b in surf}
+            ## FIX (Claude): symmetric compression for the SVG scenarios (each boundary moves inwards with velocity/2)
+            sense = 1.0 if regime == 'extension' else -1.0
+            profiles = {b: (sense * velocity / 2, sense * return_velocity(velocity, surf[b]), surf[b]) for b in surf}
         else:
             opposite = 'left' if moving_boundary == 'right' else 'right'
             z_ref = surf[moving_boundary]

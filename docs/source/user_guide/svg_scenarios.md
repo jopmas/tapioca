@@ -147,7 +147,7 @@ Unknown settings and invalid values are errors (`SVGInputError`). Defaults:
 |---|---|---|
 | `regime` | `rifting` | `rifting` (extension), `compression` (convergence), `accordion` or `quiescence` |
 | `velocity` | 1 cm/yr | velocity of the moving boundary (with `symmetric`, the sum of both boundaries) |
-| `moving_boundary` | `right` | `left`, `right` or `symmetric` (rifting and accordion) |
+| `moving_boundary` | `right` | `left`, `right` or `symmetric` (both boundaries) |
 | `quiescence_time` | 0 Myr | accordion and quiescence regimes |
 | `time_max` | 60 Myr | rifting and compression; accordion: end of the second extension; quiescence: `quiescence_time` (or 1000 Myr) |
 | `magmatism`, `magmatism_extraction` | `off` | with both `on`, a basalt layer receives the extracted melt (see below) |
@@ -165,9 +165,10 @@ In the rifting and accordion regimes, the velocity is constant from the surface 
 thickest lithosphere of the domain; in the compression regime, down to 20 km below the lithosphere at the
 moving boundary (e.g. an oceanic plate pushed towards a continent), and the opposite boundary is fixed.
 
-With `moving_boundary = symmetric` (rifting and accordion), the reference frame is at the centre of the
-domain: both boundaries move outwards with `velocity`/2, each with its own return flow below the constant
-velocity, so that the integral of the inflow is zero on each boundary. The profiles are set by
+With `moving_boundary = symmetric`, the reference frame is at the centre of the domain: both boundaries move
+with `velocity`/2 (outwards in rifting and accordion, inwards in compression), each with its own return flow
+below the constant velocity, so that the integral of the inflow is zero on each boundary. In compression, the
+constant velocity goes down to 20 km below the thickest lithosphere of the two boundaries. The profiles are set by
 `VelocityFieldBuilder.set_kinematic_regime`.
 
 ## Water and magmatic layers

@@ -87,8 +87,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         Velocity at the moving boundary [cm/yr] (with symmetric, the sum of the velocities of both boundaries).
         Default: 1 cm/yr.
     moving_boundary : str, optional
-        'left', 'right' or 'symmetric' (rifting and accordion: both boundaries move with velocity/2 and the
-        reference frame is at the centre of the domain). Default: right.
+        'left', 'right' or 'symmetric' (both boundaries move with velocity/2 and the reference frame is at the
+        centre of the domain). Default: right.
     quiescence_time : float, optional
         Duration of the quiescence [Myr] in the accordion and quiescence regimes. Default: 0 Myr.
     time_max : float, optional
@@ -480,20 +480,21 @@ class SVGScenario(SVGChecks, VerboseExtension):
         Initial velocity (Nz, Nx) with the boundary conditions of the regime (None in the quiescence regime),
         set by VelocityFieldBuilder.set_kinematic_regime (self.velocity_builder): constant velocity down to h_v_const
         below the surface (reference thickness + 20 km, where the lithosphere is thickest in rifting and accordion,
-        as in M300, and at the moving boundary in compression) and the return flow below it, so that the integral of
-        the inflow is zero. Rifting and accordion are extensions; in compression the return flow leaves through the
-        moving boundary and the opposite boundary is fixed. With moving_boundary = symmetric (rifting and accordion),
-        both boundaries move outwards with velocity/2, each with its own return flow. In accordion, scale_bcv.txt
-        changes the velocity in time.
+        as in M300, and at the moving boundary in compression, or at the thickest of both boundaries with
+        moving_boundary = symmetric) and the return flow below it, so that the integral of the inflow is zero.
+        Rifting and accordion are extensions; in compression the return flow leaves through the moving boundary
+        and the opposite boundary is fixed. With moving_boundary = symmetric, both boundaries move with velocity/2
+        (outwards in rifting and accordion, inwards in compression), each with its own return flow. In accordion,
+        scale_bcv.txt changes the velocity in time.
         The velocity fields are those of the builder (self.builder.DTree.fields.vx and vz).
         '''
         if(not self.velocity_from_ascii):
             self.VX, self.VZ = None, None
             return None
 
-        idx_bc = 0 if(self.moving_boundary == 'left') else self.Nx - 1 #column of the moving boundary
+        idx_bc = {'left': [0], 'right': [self.Nx - 1], 'symmetric': [0, self.Nx - 1]}[self.moving_boundary] #columns of the moving boundaries
         thickness_ref_x = self.thickness_litho if(self.h_v_reference == 'lithosphere') else self.thickness_mantle
-        thickness_ref_bc = thickness_ref_x[idx_bc] if(self.regime == 'compression') else thickness_ref_x.max()
+        thickness_ref_bc = thickness_ref_x[idx_bc].max() if(self.regime == 'compression') else thickness_ref_x.max()
         self.h_v_const = thickness_ref_bc + 20.0e3 #thickness with constant velocity
 
         v = VelocityFieldBuilder(self.builder, units='cm/y')

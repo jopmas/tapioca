@@ -63,9 +63,11 @@ tapioca-svg rifting.svg -o my_scenario --regime accordion --quiescence-time 0
 ```
 
 The run script of Mandyoc is written for the system that runs tapioca (`run_linux.sh` or `run_mac.sh`).
-Another system, the number of MPI processes and the options of Mandyoc may be given:
+Another system (`linux`, `mac` or `hypatia`, a SLURM job on the cluster of the group), the number of MPI processes
+and the options of Mandyoc may be given:
 ```bash
 tapioca-svg rifting.svg -o my_scenario --system linux --ncores 20 --mandyoc-options="-seed 0,5,8 -strain_seed 0.0,1.0,1.0"
+tapioca-svg rifting.svg -o my_scenario --system hypatia --mail-user name@usp.br
 ```
 
 After Mandyoc, the run script creates the `.nc` files, the snapshots and the video of the scenario, zips it and

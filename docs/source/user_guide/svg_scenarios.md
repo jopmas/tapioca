@@ -28,7 +28,8 @@ Examples are in `examples/svg_scenarios`.
 
 It also receives the scripts to run the scenario (`--no-scripts` skips them):
 
-- `run_linux.sh` or `run_mac.sh` (`--system`, default: the system that runs tapioca): runs Mandyoc with
+- `run_linux.sh`, `run_mac.sh` or `run_hypatia.sh` (`--system`, default: the system that runs tapioca; see
+  [Hypatia](#run-on-hypatia) below): runs Mandyoc with
   `$PETSC_DIR/$PETSC_ARCH/bin/mpirun` and then moves the outputs to one folder per variable with
   `0_organize_outputs.sh`. On the Mac, `caffeinate` keeps the computer awake during the run. `PETSC_DIR`,
   `PETSC_ARCH` and `MANDYOC` (the executable) set in the environment override the values of the script;
@@ -54,6 +55,28 @@ It also receives the scripts to run the scenario (`--no-scripts` skips them):
 - `zipper.sh`: zips the inputs and the outputs in `<folder>.zip`, skipping the files already in the zip,
   so it can be run again to add new outputs.
 
+
+(run-on-hypatia)=
+## Run on Hypatia
+
+`--system hypatia` writes `run_hypatia.sh`, a SLURM job for Hypatia, the cluster of the group, which can be written
+on any computer (e.g. the Mac) and submitted on the cluster with `sbatch run_hypatia.sh`:
+
+```bash
+tapioca-svg compression.svg -o compression --system hypatia --mail-user name@usp.br
+```
+
+- the job asks for `--ncores` MPI processes (default: 48) in one node, with the quality of service, the time limit
+  and the modules of `tapioca.inputs.svg._variables.HYPATIA`, and runs Mandyoc with the `mpirun` of the `openmpi`
+  module (`--map-by :OVERSUBSCRIBE`); the number of processes of the run is `SLURM_NTASKS`;
+- `--job-name` names the job (default: `svg-<folder>`); `--mail-user` (or the variable `TAPIOCA_MAIL_USER`, set
+  when the script is written) receives the messages of the job (beginning, end and failure), which are not sent
+  without it;
+- the paths are those of the cluster, not of the computer that writes the script: `$HOME/opt/petsc` with the
+  PETSc arch of `HYPATIA`, `$HOME/opt/mandyoc/bin/mandyoc`, `$HOME/opt/tapioca` and `$HOME/opt/post_processing`.
+  `PETSC_ARCH` is written as a fixed value (`PETSC_ARCH='optimized-v3.24.1-mpich'`), so a `PETSC_ARCH` of the
+  environment of the job does not change it;
+- before the post-processing, the job activates the conda environment `tapioca` (`CONDA_ENV` overrides it).
 ## Units of rock
 
 Each filled shape is a body of rock described by its object properties (Inkscape: *Object > Object Properties*):

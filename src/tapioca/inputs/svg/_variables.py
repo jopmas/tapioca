@@ -7,14 +7,15 @@ import os
 
 __all__ = ["REGIMES", "MANTLE_RHEOLOGIES", "SYSTEMS", "DEFAULT_PARAMS",
            "ORGANIZE_SCRIPT", "RUN_SCRIPT", "POST_PROCESSING_SCRIPT", "NO_POST_PROCESSING_SCRIPT",
-           "RUN_LAUNCHER", "PETSC_ENV", "PETSC_ENV_LOOKUP", "ZIP_SCRIPT"]
+           "RUN_LAUNCHER", "PETSC_ENV", "PETSC_ENV_LOOKUP", "ZIP_SCRIPT", "HYPATIA", "HYPATIA_SCRIPT",
+           "HYPATIA_CONDA_SCRIPT"]
 
 REGIMES:list = ['rifting', 'compression', 'accordion', 'quiescence']
 """list: Kinematic regimes of the SVG scenarios."""
 MANTLE_RHEOLOGIES:list = ['wet_olivine', 'dry_olivine']
 """list: Rheologies of the lithospheric mantle (its thickness is the reference of the velocity with h_v_reference = 'lithospheric_mantle')."""
-SYSTEMS:list = ['linux', 'mac']
-"""list: Systems of the run scripts."""
+SYSTEMS:list = ['linux', 'mac', 'hypatia']
+"""list: Systems of the run scripts (hypatia: SLURM job on Hypatia, the cluster of the group)."""
 
 #Script of tapioca that moves the outputs of Mandyoc to one folder per variable (copied to the scenario)
 ORGANIZE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'postrunning', '0_organize_outputs.sh')
@@ -108,6 +109,61 @@ else
     echo "$ZIP was not created or is damaged: the output files were kept."
 fi
 rm -rf "$LISTS"
+'''
+
+#Settings of the run script on Hypatia, the cluster of the group (run_hypatia.sh, a SLURM job): MPI processes,
+#quality of service and time limit of the job, modules of the MPI that Mandyoc is linked to, PETSc arch and the
+#conda environment of the post-processing
+HYPATIA:dict = {
+    'ncores': 48,
+    'qos': 'qos_mid_cpu_long',
+    'time': '5-00:00:00',
+    'modules': ['gcc/13.2.0-gcc-8.5.0-tnbqzki', 'openmpi/5.0.3-gcc-8.5.0-no4tqjk', 'cmake/3.27.9-gcc-8.5.0-33534nt'],
+    'petsc_arch': 'optimized-v3.24.1-mpich',
+    'conda_env': 'tapioca',
+}
+
+#Run script of Mandyoc on Hypatia (@KEY@ are replaced in write_scripts): a SLURM job (sbatch run_hypatia.sh) that
+#runs Mandyoc with the mpirun of the openmpi module, then the steps of RUN_SCRIPT after the run.
+HYPATIA_SCRIPT = '''#!/usr/bin/env bash
+@SBATCH_MAIL@#SBATCH --ntasks=@NCORES@
+#SBATCH --qos=@QOS@
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time @TIME@
+#SBATCH --job-name @JOB_NAME@
+#SBATCH --output slurm_%j.log
+#SBATCH --error=log_error_%j.log
+#SBATCH --no-requeue
+# Runs Mandyoc on Hypatia (sbatch run_hypatia.sh) and moves the outputs to one folder per variable
+# (0_organize_outputs.sh). Created by tapioca.
+# PETSC_DIR and MANDYOC set in the environment override the values below.
+module purge
+@MODULES@
+PETSC_DIR=${PETSC_DIR:-@PETSC_DIR@}
+PETSC_ARCH='@PETSC_ARCH@'
+MANDYOC=${MANDYOC:-@MANDYOC@}
+NUMBER_OF_CORES=${SLURM_NTASKS:-@NCORES@}
+MANDYOC_OPTIONS="@MANDYOC_OPTIONS@"
+
+touch FD.out
+mpirun -n $NUMBER_OF_CORES --map-by :OVERSUBSCRIBE $MANDYOC $MANDYOC_OPTIONS | tee FD.out
+
+# Moves the outputs to one folder per variable
+bash 0_organize_outputs.sh
+@CONDA@@POST_PROCESSING@'''
+
+#Conda environment of the post-processing on Hypatia (@CONDA@ of HYPATIA_SCRIPT, with the post-processing)
+HYPATIA_CONDA_SCRIPT = '''
+# Post-processing in the conda environment of tapioca (Python, ffmpeg of the video); conda activate needs
+# the hook in a batch job. Julia comes from the PATH (JULIA overrides it).
+CONDA_ENV=${CONDA_ENV:-@CONDA_ENV@}
+if command -v conda > /dev/null; then
+    eval "$(conda shell.bash hook)"
+    conda activate "$CONDA_ENV" || echo "conda environment $CONDA_ENV not found: post-processing with the current Python."
+else
+    echo "conda not found: post-processing with the current Python."
+fi
 '''
 
 #caffeinate keeps the Mac awake while Mandyoc runs

@@ -48,7 +48,8 @@ from ..generic_input_classes import TemperatureFieldBuilder, VelocityFieldBuilde
 from ..checks import SVGChecks
 from ._variables import (REGIMES, MANTLE_RHEOLOGIES, SYSTEMS, DEFAULT_PARAMS, ORGANIZE_SCRIPT, RUN_SCRIPT,
                          POST_PROCESSING_SCRIPT, NO_POST_PROCESSING_SCRIPT,
-                         RUN_LAUNCHER, PETSC_ENV, PETSC_ENV_LOOKUP, ZIP_SCRIPT)
+                         RUN_LAUNCHER, PETSC_ENV, PETSC_ENV_LOOKUP, ZIP_SCRIPT, HYPATIA, HYPATIA_SCRIPT,
+                         HYPATIA_CONDA_SCRIPT)
 from .materials import MandyocLayer, BASALT
 from ... import __version__
 from .reader import (SVGInputError, SETUP_LABEL, MIN_THICKNESS, EXPERIMENT_KEYS, SVG_VERSION, INKSCAPE_VERSION,
@@ -545,11 +546,13 @@ class SVGScenario(SVGChecks, VerboseExtension):
 
     def write_scripts(self, output_dir='.', system=None, ncores=None, mandyoc_options='',
                       petsc_dir=None, petsc_arch=None, mandyoc=None, post_processing=True,
-                      tapioca_dir=None, post_processing_dir=None, petsc_env=PETSC_ENV):
+                      tapioca_dir=None, post_processing_dir=None, petsc_env=PETSC_ENV, job_name=None, mail_user=None):
         '''
         Write the scripts of the scenario in output_dir:
           - run_linux.sh or run_mac.sh: runs Mandyoc with mpirun of PETSc (run_mac.sh first looks for the PETSc
-            of the conda environment petsc_env) and then moves the outputs to one
+            of the conda environment petsc_env), or run_hypatia.sh: a SLURM job on Hypatia, the cluster of the
+            group (sbatch run_hypatia.sh), that runs Mandyoc with the mpirun of the modules of HYPATIA and
+            activates the conda environment of HYPATIA for the post-processing. Then they move the outputs to one
             folder per variable with 0_organize_outputs.sh (on the Mac, caffeinate keeps it awake). With
             post_processing, it then creates the .nc files with src/postrunning/meshes2netcdf.jl and
             particles2netcdf.jl (last step as reference step), makes the snapshots and the video of the scenario
@@ -562,9 +565,10 @@ class SVGScenario(SVGChecks, VerboseExtension):
         Parameters
         ----------
         system : str, optional
-            'linux' or 'mac'. Default: the system that runs tapioca.
+            'linux', 'mac' or 'hypatia'. Default: the system that runs tapioca ('linux' or 'mac').
         ncores : int, optional
-            Number of MPI processes. Default: number of cores of this computer.
+            Number of MPI processes. Default: number of cores of this computer (hypatia: HYPATIA['ncores'],
+            and SLURM_NTASKS when the job runs).
         mandyoc_options : str, optional
             Command line options of Mandyoc (e.g. '-seed 0,5,8 -strain_seed 0.0,1.0,1.0').
         petsc_dir, petsc_arch, mandyoc : str, optional
@@ -583,6 +587,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
             Folders of tapioca and of post_processing used by the post-processing. Default: TAPIOCA_DIR and
             POST_PROCESSING_DIR of the environment, or $HOME/opt/tapioca and $HOME/opt/post_processing. Values
             set in the environment when the script runs override them (also JULIA and PYTHON, the programs).
+            On hypatia, the environment of this computer is not used: the defaults are in $HOME/opt of the
+            cluster ($HOME/opt/petsc with HYPATIA['petsc_arch'], $HOME/opt/mandyoc/bin/mandyoc, ...).
+        job_name, mail_user : str, optional
+            hypatia only: name of the SLURM job (default: svg-<folder>) and e-mail that receives the messages of
+            the job (default: TAPIOCA_MAIL_USER of the environment, or no messages).
         '''
         this_system = {'Linux': 'linux', 'Darwin': 'mac'}.get(platform.system())
         if(system is None):
@@ -597,6 +606,12 @@ class SVGScenario(SVGChecks, VerboseExtension):
 
         if(system != 'mac' or petsc_dir is not None):
             petsc_env = None  #an explicit petsc_dir wins over the conda environment
+        if(system == 'hypatia'):  #paths of the cluster, not of the environment of this computer
+            petsc_dir = '$HOME/opt/petsc' if(petsc_dir is None) else petsc_dir
+            petsc_arch = HYPATIA['petsc_arch'] if(petsc_arch is None) else petsc_arch
+            tapioca_dir = '$HOME/opt/tapioca' if(tapioca_dir is None) else tapioca_dir
+            post_processing_dir = '$HOME/opt/post_processing' if(post_processing_dir is None) else post_processing_dir
+            ncores = HYPATIA['ncores'] if(ncores is None) else ncores
         if(petsc_dir is None):
             petsc_dir = os.environ.get('PETSC_DIR', '$HOME/opt/petsc')
         if(petsc_arch is None):
@@ -618,11 +633,23 @@ class SVGScenario(SVGChecks, VerboseExtension):
         os.makedirs(output_dir, exist_ok=True)
         path = lambda fname: os.path.join(output_dir, fname)
 
-        run = RUN_SCRIPT.replace('@POST_PROCESSING@', POST_PROCESSING_SCRIPT if(post_processing) else NO_POST_PROCESSING_SCRIPT)
+        run = HYPATIA_SCRIPT if(system == 'hypatia') else RUN_SCRIPT
+        run = run.replace('@POST_PROCESSING@', POST_PROCESSING_SCRIPT if(post_processing) else NO_POST_PROCESSING_SCRIPT)
         run = run.replace('@PETSC_ENV_LOOKUP@', PETSC_ENV_LOOKUP if(petsc_env) else '')
+        if(system == 'hypatia'):
+            if(mail_user is None):
+                mail_user = os.environ.get('TAPIOCA_MAIL_USER')
+            if(job_name is None):
+                job_name = f"svg-{os.path.basename(os.path.abspath(output_dir))}"
+            sbatch_mail = (f"#SBATCH --mail-type=BEGIN,END,FAIL\n#SBATCH --mail-user={mail_user}\n" if(mail_user) else '')
+            run = run.replace('@CONDA@', HYPATIA_CONDA_SCRIPT if(post_processing) else '')
+            for key, value in [('SBATCH_MAIL', sbatch_mail), ('QOS', HYPATIA['qos']), ('TIME', HYPATIA['time']),
+                               ('JOB_NAME', job_name), ('CONDA_ENV', HYPATIA['conda_env']),
+                               ('MODULES', '\n'.join(f'module load {module}' for module in HYPATIA['modules']))]:
+                run = run.replace(f'@{key}@', str(value))
         for key, value in [('PETSC_DIR', petsc_dir), ('PETSC_ARCH', petsc_arch), ('MANDYOC', mandyoc),
                            ('NCORES', int(ncores)), ('MANDYOC_OPTIONS', mandyoc_options),
-                           ('LAUNCHER', RUN_LAUNCHER[system]), ('TAPIOCA_DIR', tapioca_dir),
+                           ('LAUNCHER', RUN_LAUNCHER.get(system, '')), ('TAPIOCA_DIR', tapioca_dir),
                            ('POST_PROCESSING_DIR', post_processing_dir), ('PETSC_ENV', petsc_env)]:
             run = run.replace(f'@{key}@', str(value))
         scripts = {f'run_{system}.sh': run, 'zipper.sh': ZIP_SCRIPT}
@@ -638,12 +665,12 @@ class SVGScenario(SVGChecks, VerboseExtension):
                   f"{', with post-processing' if(post_processing) else ''})")
 
     def write_all(self, output_dir='.', plots=True, copy_svg=True, scripts=True, system=None, ncores=None,
-                  mandyoc_options='', post_processing=True, zip_inputs=True, **params):
+                  mandyoc_options='', post_processing=True, zip_inputs=True, job_name=None, mail_user=None, **params):
         '''
         Write the input files of Mandyoc in output_dir: interfaces.txt, param.txt, input_temperature_0.txt,
         input_velocity_0.txt, vel_bc.txt, velz_bc.txt and scale_bcv.txt (accordion), the scenario infos
         (infos_<folder>.txt), a copy of the SVG and the figures numerical_setup.png and initial_temperature.png.
-        With scripts, also the run script of Mandyoc for system ('linux' or 'mac'), with the post-processing
+        With scripts, also the run script of Mandyoc for system ('linux', 'mac' or 'hypatia'), with the post-processing
         if post_processing, 0_organize_outputs.sh and zipper.sh (see write_scripts).
         With zip_inputs, the files written are zipped in inputs_<folder>.zip (see zip_inputs).
         Keyword arguments change parameters of param.txt (see parameters).
@@ -683,7 +710,7 @@ class SVGScenario(SVGChecks, VerboseExtension):
 
         if(scripts):
             self.write_scripts(output_dir, system=system, ncores=ncores, mandyoc_options=mandyoc_options,
-                               post_processing=post_processing)
+                               post_processing=post_processing, job_name=job_name, mail_user=mail_user)
 
         if(plots):
             self.plot_temperature(path('initial_temperature.png'))
@@ -702,7 +729,7 @@ class SVGScenario(SVGChecks, VerboseExtension):
     #files written by write_all (those that exist are zipped by zip_inputs)
     INPUT_FILES = ['interfaces.txt', 'param.txt', 'input_temperature_0.txt', 'input_velocity_0.txt', 'vel_bc.txt',
                    'velz_bc.txt', 'scale_bcv.txt', 'numerical_setup.png', 'initial_temperature.png',
-                   'run_linux.sh', 'run_mac.sh', '0_organize_outputs.sh', 'zipper.sh']
+                   'run_linux.sh', 'run_mac.sh', 'run_hypatia.sh', '0_organize_outputs.sh', 'zipper.sh']
 
     def zip_inputs(self, output_dir='.'):
         '''

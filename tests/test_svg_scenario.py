@@ -402,6 +402,48 @@ def test_run_script_petsc_env_lookup(tmp_path, system, kwargs, lookup):
         assert run.index("conda env list") < run.index("PETSC_DIR=${PETSC_DIR:-") < run.index("mpirun -n")
 
 
+def test_run_script_hypatia(tmp_path, monkeypatch):
+    '''run_hypatia.sh is a SLURM job with the settings of HYPATIA and the paths of the cluster.'''
+    from tapioca.inputs.svg._variables import HYPATIA
+    monkeypatch.setenv("PETSC_DIR", "/petsc/of/this/computer")  # not used on hypatia
+    monkeypatch.delenv("TAPIOCA_MAIL_USER", raising=False)
+    scenario = build_scenario("rifting")
+    folder = tmp_path / "my_scenario"
+    scenario.write_scripts(str(folder), system="hypatia", mail_user="name@usp.br")
+    run = (folder / "run_hypatia.sh").read_text()
+    assert re.search(r"@[A-Z_]+@", run) is None
+    lines = run.splitlines()
+    sbatch = [line for line in lines if line.startswith("#SBATCH")]
+    assert lines[1:1 + len(sbatch)] == sbatch, "the #SBATCH lines come right after the shebang"
+    for option in [f"--ntasks={HYPATIA['ncores']}", f"--qos={HYPATIA['qos']}", f"--time {HYPATIA['time']}",
+                   "--job-name svg-my_scenario", "--mail-user=name@usp.br", "--mail-type=BEGIN,END,FAIL"]:
+        assert any(option in line for line in sbatch), option
+    for module in HYPATIA["modules"]:
+        assert f"module load {module}" in run
+    assert "PETSC_DIR=${PETSC_DIR:-$HOME/opt/petsc}" in run and f"PETSC_ARCH='{HYPATIA['petsc_arch']}'" in run
+    assert f"NUMBER_OF_CORES=${{SLURM_NTASKS:-{HYPATIA['ncores']}}}" in run
+    assert "TAPIOCA_DIR=${TAPIOCA_DIR:-$HOME/opt/tapioca}" in run
+    assert run.index("mpirun -n") < run.index("bash 0_organize_outputs.sh") < run.index("conda activate") \
+        < run.index("meshes2netcdf.jl") < run.index("bash zipper.sh")
+    assert "caffeinate" not in run and "conda env list" not in run
+
+
+def test_run_script_hypatia_options(tmp_path, monkeypatch):
+    monkeypatch.setenv("TAPIOCA_MAIL_USER", "env@usp.br")
+    with quiet():
+        cli.main([str(svg_path("rifting")), "-o", str(tmp_path), "--dx", "10", "--dz", "10", "--no-plots",
+                  "--system", "hypatia", "--ncores", "24", "--job-name", "test", "--no-post-processing"])
+    run = (tmp_path / "run_hypatia.sh").read_text()
+    assert "#SBATCH --ntasks=24" in run and "#SBATCH --job-name test" in run
+    assert "#SBATCH --mail-user=env@usp.br" in run
+    assert "conda activate" not in run and "meshes2netcdf.jl" not in run
+    with zipfile.ZipFile(tmp_path / f"inputs_{tmp_path.name}.zip") as zf:
+        assert "run_hypatia.sh" in zf.namelist()
+    monkeypatch.delenv("TAPIOCA_MAIL_USER")
+    build_scenario("rifting").write_scripts(str(tmp_path / "no_mail"), system="hypatia")
+    assert "--mail" not in (tmp_path / "no_mail" / "run_hypatia.sh").read_text()
+
+
 def test_cli_tapioca_svg_error_message(tmp_path):
     with pytest.raises(SystemExit, match="Error"):
         cli.main([str(tmp_path / "missing.svg"), "-o", str(tmp_path)])

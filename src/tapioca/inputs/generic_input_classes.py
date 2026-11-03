@@ -13,6 +13,7 @@ from xarray import DataTree
 import scipy.sparse as sp
 from  scipy.sparse.linalg import bicgstab, spsolve
 
+from .checks import InputError
 from .._variables import VARS_TYPES, PARAMS_TYPES, VARIABLES_LIST, INTERFACES_PARAMETERS,DEFAULT_MATERIAL,MATERIAL_PARAMETERS,PARAMETERS_UNITS,SEC_PER_YEAR
 from .._aux_functions import read_params, evaluate_params, ensure_directory_exists, build_diagonals_2D, spsolve_heat_col, get_interface, _numba_diffusion_loop, _Druker_Prager_YS, _Byerlee_law_YS, _visc_dislocation_creep
 
@@ -549,7 +550,14 @@ class MandyocBuilder(GeometryDomain,VerboseExtension):
         tempbuilder:TemperatureFieldBuilder
             The previous setup of the temperature field. It must be already treated.
         '''
-    
+        ## FIX (Claude): param.txt and the temperature must use the same thermal parameters
+        if hasattr(self,'params'):
+            for name,value in {'thermal_expansion_coefficient':tempbuilder.alpha,
+                               'heat_capacity':tempbuilder.c_cap,
+                               'gravity_acceleration':abs(tempbuilder.g)}.items():
+                if name in self.params and not np.isclose(self.params[name],value):
+                    raise InputError(f"{name} = {self.params[name]:g} in the parameters, but {value:g} in the TemperatureFieldBuilder.")
+
         temp = xr.DataArray(
                         np.ones((self.Nz, self.Nx))*-1, 
                         dims=('z', 'x'),
@@ -657,7 +665,7 @@ class MandyocBuilder(GeometryDomain,VerboseExtension):
 
         g:float
             Gravitational acceleration (in m2/s). 
-            If not given, is set as `-10`.
+            If not given, the value of `TemperatureFieldBuilder` will be used, or `-10` without it.
 
         mu:float
             Friction coefficient of Byerlee law. Only relevant if `plastic=byerlee`.
@@ -666,7 +674,8 @@ class MandyocBuilder(GeometryDomain,VerboseExtension):
         '''
         if 'litho_P' not in self.DTree.fields:
             alpha = kargs.get('alpha',None)
-            g = kargs.get('g',-10)
+            ## FIX (Claude): by default, the gravity of the TemperatureFieldBuilder (as alpha)
+            g = kargs.get('g',-getattr(self,'g_abs',10))
             self.calculate_litho_pressure(alpha, g)
 
         sr = kargs.get('sr',1e-15)
@@ -923,6 +932,9 @@ class MandyocBuilder(GeometryDomain,VerboseExtension):
 
         for k,v in read_input.items():
             if k in fixed_parameters:
+                ## FIX (Claude): a thermal parameter different from the one of the temperature was silently ignored
+                if k in params_to_check.values() and not np.isclose(float(v),temp_param[k]):
+                    raise InputError(f"{k} = {v}, but the temperature field was created with {temp_param[k]:g}.")
                 self._print_verbose(f"{k} was already set in the builder.")
                 continue
 

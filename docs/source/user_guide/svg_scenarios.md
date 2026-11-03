@@ -132,6 +132,9 @@ time_max = 500 Myr
 magmatism = off
 magmatism_extraction = off
 magmatism_Ts0 = 1080
+heat_capacity = 1250
+thermal_expansion_coefficient = 3.28e-5
+gravity_acceleration = 10
 preset_initial_temperature = ../preliminary
 temperature_solver = 2D
 ```
@@ -141,7 +144,10 @@ Only the shape labelled `setup` is read (older SVGs with a shape labelled `domai
 Every setting can also be given to `SVGScenario` (as a keyword argument, with or without units, e.g.
 `SVGScenario("scenario.svg", quiescence_time="0 Myr")`) or on the command line (e.g. `--regime`, `--dx`),
 which overrides the SVG. The units are those of `tapioca.UNITS` (km or m; Myr, kyr or yr; cm/yr or mm/yr; oC).
-Unknown settings and invalid values are errors (`SVGInputError`). Defaults:
+Unknown settings and invalid values are errors (`SVGInputError`). The thermal settings may also be given to
+`write_all` (e.g. `scenario.write_all("my_scenario", heat_capacity=700)`), but a value different from the one of
+an initial temperature already built is an error. On the command line they accept hyphens or underscores, with the
+value after a space or `=` (`--heat-capacity 700`, `--heat_capacity=700`). Defaults:
 
 | Setting | Default | |
 |---|---|---|
@@ -152,6 +158,9 @@ Unknown settings and invalid values are errors (`SVGInputError`). Defaults:
 | `time_max` | 60 Myr | rifting and compression; accordion: end of the second extension; quiescence: `quiescence_time` (or 1000 Myr) |
 | `magmatism`, `magmatism_extraction` | `off` | with both `on`, a basalt layer receives the extracted melt (see below) |
 | `magmatism_Ts0` | 1080 °C | |
+| `heat_capacity` | 1250 J/kg/K | plain number; used in `param.txt` and in the initial temperature |
+| `thermal_expansion_coefficient` | 3.28e-5 1/K | plain number; used in `param.txt` and in the initial temperature |
+| `gravity_acceleration` | 10 m/s² | plain positive number; used in `param.txt`, in the initial temperature and in the yield strength envelopes |
 | `magmatic_layer` | basalt at the top | label (or ID from the bottom) of the layer that receives the extracted melt |
 | `water_layer` | none | label (or ID) of the unit drawn as water, right below the sticky air |
 | `preset_initial_temperature` | none | folder of a preliminary scenario (see below) |

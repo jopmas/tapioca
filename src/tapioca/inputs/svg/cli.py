@@ -4,12 +4,14 @@ Command line interface of the scenario builder:
     tapioca-svg scenario.svg [-o output_dir] [--dx 1] [--dz 1] [--regime rifting] [--velocity 1]
                 [--moving-boundary right] [--quiescence-time 0] [--time-max 500]
                 [--magmatism off] [--magmatism-extraction off] [--magmatism-Ts0 1080]
+                [--heat-capacity 1250] [--thermal-expansion-coefficient 3.28e-5] [--gravity-acceleration 10]
                 [--preset-initial-temperature path/to/preliminary] [--preset-temperature-mode profile]
                 [--preset-time 10] [--min-thickness 1] [--no-plots]
                 [--system linux] [--ncores 20] [--mandyoc-options="-seed 0,5,8 -strain_seed 0.0,1.0,1.0"] [--no-scripts] [--no-zip]
                 [--no-post-processing]
 
-The options override the settings of the SVG (description of the shape labelled "setup").
+The options override the settings of the SVG (description of the shape labelled "setup"). The three thermal
+options also accept underscores (--heat_capacity), and a value after a space or after = (--heat-capacity=700).
 '''
 
 import argparse
@@ -41,6 +43,14 @@ def main(argv=None):
     parser.add_argument('--magmatism-extraction', choices=['on', 'off'],
                         help='extraction of the melt to a basalt layer below the sticky air (default: from the SVG, or off)')
     parser.add_argument('--magmatism-Ts0', type=float, help='magmatism_Ts0 in param.txt [oC] (default: from the SVG, or 1080)')
+    parser.add_argument('--heat-capacity', '--heat_capacity', type=float,
+                        help='heat capacity [J/kg/K] of param.txt and of the initial temperature (default: from the SVG, or 1250)')
+    parser.add_argument('--thermal-expansion-coefficient', '--thermal_expansion_coefficient', type=float,
+                        help='thermal expansion coefficient [1/K] of param.txt and of the initial temperature (default: '
+                             'from the SVG, or 3.28e-5)')
+    parser.add_argument('--gravity-acceleration', '--gravity_acceleration', type=float,
+                        help='gravity (positive) [m/s2] of param.txt, of the initial temperature and of the yield strength '
+                             'envelopes (default: from the SVG, or 10)')
     parser.add_argument('--preset-initial-temperature', help='folder (with temperature.nc) or NetCDF file of a preliminary scenario: the '
                                                              'horizontal mean of its final temperature, adapted to the lithosphere '
                                                              'of the SVG, is the initial temperature (default: from the SVG, or none)')
@@ -73,6 +83,9 @@ def main(argv=None):
                                moving_boundary=args.moving_boundary, quiescence_time=args.quiescence_time,
                                time_max=args.time_max, magmatism=args.magmatism,
                                magmatism_extraction=args.magmatism_extraction, magmatism_Ts0=args.magmatism_Ts0,
+                               heat_capacity=args.heat_capacity,
+                               thermal_expansion_coefficient=args.thermal_expansion_coefficient,
+                               gravity_acceleration=args.gravity_acceleration,
                                preset_initial_temperature=args.preset_initial_temperature,
                                preset_temperature_mode=args.preset_temperature_mode, preset_time=args.preset_time,
                                temperature_solver=args.temperature_solver, water_layer=args.water_layer,

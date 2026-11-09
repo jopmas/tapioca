@@ -159,6 +159,7 @@ heat_capacity = 1250
 thermal_expansion_coefficient = 3.28e-5
 gravity_acceleration = 10
 preset_initial_temperature = ../preliminary
+custom_veloc_field = build_veloc.py
 temperature_solver = 2D
 ```
 
@@ -187,6 +188,7 @@ value after a space or `=` (`--heat-capacity 700`, `--heat_capacity=700`). Defau
 | `magmatic_layer` | basalt at the top | label (or ID from the bottom) of the layer that receives the extracted melt |
 | `water_layer` | none | label (or ID) of the unit drawn as water, right below the sticky air |
 | `preset_initial_temperature` | none | folder of a preliminary scenario (see below) |
+| `custom_veloc_field` | none | Python script that builds the velocity field instead of the kinematic regime (see below) |
 | `temperature_solver` | `2D` | `2D` or `columns` (see below) |
 | `min_thickness` | 1 km | thin layers left by overlapping shapes (see above); `0 km` keeps them |
 
@@ -202,6 +204,40 @@ with `velocity`/2 (outwards in rifting and accordion, inwards in compression), e
 below the constant velocity, so that the integral of the inflow is zero on each boundary. In compression, the
 constant velocity goes down to 20 km below the thickest lithosphere of the two boundaries. The profiles are set by
 `VelocityFieldBuilder.set_kinematic_regime`.
+
+### Custom velocity field
+
+`custom_veloc_field` replaces the velocity of the kinematic regime with a Python script (a relative path in the SVG
+is relative to the folder of the SVG; on the command line, `--custom-veloc-field`). The script defines
+`build_velocity(scenario)`, which sets the velocity at the boundaries of a
+`VelocityFieldBuilder(scenario.builder, units='cm/y')` and returns it; tapioca then creates the fields with
+`MandyocBuilder.create_velocity_field`. Optionally, `infos(scenario)` returns lines that describe the field in
+`infos_<folder>.txt`. The script has the whole `SVGScenario`: `regime`, `velocity`, `moving_boundary`, `fac_air`,
+`surface_id`, `thickness_litho`, `builder`, etc.
+
+The net flux through the boundaries must be zero (e.g. with `conservate_veloc`); otherwise tapioca prints a warning.
+The script is copied to the folder of the scenario and zipped with the inputs. It can not be used with the
+quiescence regime, which has no velocity at the boundaries. When the velocity across the base is not zero,
+`numerical_setup.png` shows it with vertical lines along the base.
+
+Example: compression with the plate pushed from the left and the inflow leaving through the whole base:
+
+```python
+from tapioca._aux_functions import get_interface
+from tapioca.inputs.generic_input_classes import VelocityFieldBuilder
+
+def build_velocity(scenario):
+    surface = get_interface(scenario.builder.DTree.interfaces.ds, scenario.surface_id)
+    z_surf = float(surface.values[0])                 # m, z positive upwards (0 at the top)
+    h_const = scenario.thickness_litho[0] + 20.0e3    # lithosphere at the left boundary + 20 km
+    v = VelocityFieldBuilder(scenario.builder, units='cm/y')
+    v.set_region('left', [z_surf - h_const, z_surf + scenario.fac_air - 1e-6], vx=scenario.velocity)
+    v.conservate_veloc('bot')                         # uniform outflow along the base
+    return v
+
+def infos(scenario):
+    return ['plate pushed from the left, outflow through the base']
+```
 
 ## Water and magmatic layers
 

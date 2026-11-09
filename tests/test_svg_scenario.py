@@ -579,3 +579,95 @@ def test_cli_tapioca_svg_interfaces(tmp_path, monkeypatch):
         reader.main()
     lines = out.read_text().splitlines()
     assert len(lines) == len(tp.MATERIAL_PARAMETERS) + 161
+
+
+###############################################################################
+# custom_veloc_field: velocity field built by a script
+###############################################################################
+
+BASAL_OUTFLOW = '''
+from tapioca._aux_functions import get_interface
+from tapioca.inputs.generic_input_classes import VelocityFieldBuilder
+
+def build_velocity(scenario):
+    surface = get_interface(scenario.builder.DTree.interfaces.ds, scenario.surface_id)
+    z_surf = float(surface.values[0])
+    v = VelocityFieldBuilder(scenario.builder, units='cm/y')
+    v.set_region('left', [z_surf - 100e3, z_surf], vx=scenario.velocity)
+    v.conservate_veloc('bot')
+    return v
+
+def infos(scenario):
+    return ['pushed from the left, outflow through the base']
+'''
+
+
+def custom_script(tmp_path, text=BASAL_OUTFLOW, name="build_veloc.py"):
+    path = tmp_path / name
+    path.write_text(text)
+    return path
+
+
+def test_custom_veloc_field_builds_the_velocity(tmp_path):
+    script = custom_script(tmp_path)
+    scenario = build_scenario("compression", moving_boundary="left", custom_veloc_field=str(script))
+    assert scenario.source["custom_veloc_field"] == "argument"
+    with quiet():
+        scenario.build_velocity()
+        flux = scenario.velocity_builder.integrate_normal_components()
+    assert abs(flux) < 1e-15
+    assert scenario.VX[:, -1].max() == 0 and scenario.VX[:, 0].max() > 0  # right fixed, left pushed
+    base = scenario.VZ[np.argmax(scenario.z), :]
+    assert base[2:-2].max() < 0 and np.allclose(base[base != 0], base[base != 0][0])  # uniform outflow
+    assert np.all(scenario.VZ[np.argmin(scenario.z), :] == 0)  # nothing through the top
+
+    folder = tmp_path / "out"
+    with quiet():
+        scenario.write_all(str(folder), plots=False, scripts=False)
+    assert (folder / "build_veloc.py").read_text() == BASAL_OUTFLOW
+    with zipfile.ZipFile(folder / "inputs_out.zip") as zf:
+        assert "build_veloc.py" in zf.namelist()
+    infos = (folder / "infos_out.txt").read_text()
+    assert f"custom velocity field: {script}" in infos and "outflow through the base" in infos
+    v = np.loadtxt(folder / "input_velocity_0.txt").reshape(scenario.Nz, scenario.Nx, 2)
+    np.testing.assert_array_equal(v[..., 1], scenario.VZ)
+
+
+def test_custom_veloc_field_plot_shows_the_base(tmp_path):
+    script = custom_script(tmp_path)
+    scenario = build_scenario("compression", moving_boundary="left", custom_veloc_field=str(script))
+    with quiet():
+        scenario.plot_setup(str(tmp_path / "setup.png"))
+    assert (tmp_path / "setup.png").stat().st_size > 0
+
+
+def test_custom_veloc_field_relative_to_the_svg(tmp_path):
+    svg = tmp_path / "compression.svg"
+    text = svg_path("compression").read_text()
+    text = re.sub(r"(regime\s*=\s*compression)", r"\1\ncustom_veloc_field = build_veloc.py", text, count=1)
+    svg.write_text(text)
+    custom_script(tmp_path)
+    with quiet():
+        scenario = SVGScenario(str(svg), verbose=False, **COARSE)
+    assert scenario.source["custom_veloc_field"] == "SVG"
+    assert scenario.custom_veloc_field == str(tmp_path / "build_veloc.py")
+
+
+@pytest.mark.parametrize("text, message", [("x = 1\n", "has no function build_velocity"),
+                                           ("def build_velocity(scenario):\n    return None\n", "must return a VelocityFieldBuilder")])
+def test_custom_veloc_field_bad_script(tmp_path, text, message):
+    script = custom_script(tmp_path, text)
+    scenario = build_scenario("compression", custom_veloc_field=str(script))
+    with pytest.raises(SVGInputError, match=message), quiet():
+        scenario.build_velocity()
+
+
+def test_custom_veloc_field_checks(tmp_path):
+    with pytest.raises(SVGInputError, match="not found"):
+        build_scenario("compression", custom_veloc_field=str(tmp_path / "missing.py"))
+    other = tmp_path / "veloc.txt"
+    other.write_text("")
+    with pytest.raises(SVGInputError, match="Python script"):
+        build_scenario("compression", custom_veloc_field=str(other))
+    with pytest.raises(SVGInputError, match="quiescence"):
+        build_scenario("compression", regime="quiescence", custom_veloc_field=str(custom_script(tmp_path)))

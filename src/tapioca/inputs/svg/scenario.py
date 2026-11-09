@@ -21,6 +21,7 @@ experiment:
     thermal_expansion_coefficient = 3.28e-5    (1/K)
     gravity_acceleration = 10                  (m/s2)
     preset_initial_temperature = ../preliminary
+    custom_veloc_field = build_veloc.py        (Python script with build_velocity(scenario))
     temperature_solver = 2D                    (2D or columns)
     min_thickness = 1 km
 
@@ -39,7 +40,7 @@ TemperatureFieldBuilder and a VelocityFieldBuilder. The input files are exported
 so interfaces.txt has the 13 parameters of tapioca.DEFAULT_MATERIAL.
 '''
 
-import os, glob, shutil, platform, zipfile
+import os, glob, shutil, platform, zipfile, importlib.util
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -126,6 +127,9 @@ class SVGScenario(SVGChecks, VerboseExtension):
         scenario (see tapioca.read_preset_temperature): the horizontal mean of its final
         temperature, adapted to the lithosphere of the SVG, is the initial temperature. A relative path in the
         SVG is relative to the folder of the SVG. Default: none (conductive model).
+    custom_veloc_field : str, optional
+        Python script that builds the velocity field instead of the kinematic regime (see build_velocity). A
+        relative path in the SVG is relative to the folder of the SVG. Default: none (kinematic regime).
     temperature_solver : str, optional
         Steady-state conduction in the lithosphere of the conductive model: '2D' (the whole lithosphere at once,
         so heat also flows sideways where the layers change along x) or 'columns' (each column alone).
@@ -340,6 +344,16 @@ class SVGScenario(SVGChecks, VerboseExtension):
             preset = self._check_path('preset_initial_temperature', preset, base)
         self.preset_initial_temperature = preset
 
+        custom = setting('custom_veloc_field', None)
+        if(custom is not None): #a relative path in the SVG is relative to the folder of the SVG
+            base = os.path.dirname(os.path.abspath(self.svg_file)) if(self.source['custom_veloc_field'] == 'SVG') else None
+            custom = self._check_path('custom_veloc_field', custom, base)
+            if(not os.path.isfile(custom) or not custom.endswith('.py')):
+                self._fail(f"custom_veloc_field must be a Python script (.py): {custom}")
+            if(self.regime == 'quiescence'):
+                self._fail("custom_veloc_field: the quiescence regime has no velocity at the boundaries.")
+        self.custom_veloc_field = custom
+
         self.temperature_solver = self._check_choice('temperature_solver', setting('temperature_solver', '2D'),
                                                      ['2D', 'columns'], aliases={'1D': 'columns'})
 
@@ -378,6 +392,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         if(self.preset_initial_temperature is not None):
             self._print_verbose(f"Initial temperature from the preliminary scenario {self.preset_initial_temperature} "
                         f"({self.source['preset_initial_temperature']})")
+        if(self.custom_veloc_field is not None):
+            self._print_verbose(f"Velocity field from {self.custom_veloc_field} ({self.source['custom_veloc_field']})")
 
     ###########################################################################
     # Lithosphere-asthenosphere boundary
@@ -513,11 +529,14 @@ class SVGScenario(SVGChecks, VerboseExtension):
         and the opposite boundary is fixed. With moving_boundary = symmetric, both boundaries move with velocity/2
         (outwards in rifting and accordion, inwards in compression), each with its own return flow. In accordion,
         scale_bcv.txt changes the velocity in time.
+        With custom_veloc_field, the script builds the velocity instead (see _build_custom_velocity).
         The velocity fields are those of the builder (self.builder.DTree.fields.vx and vz).
         '''
         if(not self.velocity_from_ascii):
             self.VX, self.VZ = None, None
             return None
+        if(self.custom_veloc_field is not None):
+            return self._build_custom_velocity()
 
         idx_bc = {'left': [0], 'right': [self.Nx - 1], 'symmetric': [0, self.Nx - 1]}[self.moving_boundary] #columns of the moving boundaries
         thickness_ref_x = self.thickness_litho if(self.h_v_reference == 'lithosphere') else self.thickness_mantle
@@ -533,6 +552,46 @@ class SVGScenario(SVGChecks, VerboseExtension):
 
         self.VX = self.builder.DTree.fields.vx.values
         self.VZ = self.builder.DTree.fields.vz.values
+        return self.VX, self.VZ
+
+    def _load_custom_velocity(self):
+        '''Module of the script custom_veloc_field (loaded once).'''
+        if(getattr(self, '_custom_velocity_module', None) is None):
+            path = self.custom_veloc_field
+            name = 'tapioca_custom_veloc_' + os.path.splitext(os.path.basename(path))[0]
+            spec = importlib.util.spec_from_file_location(name, path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            if(not callable(getattr(module, 'build_velocity', None))):
+                self._fail(f"custom_veloc_field: {path} has no function build_velocity(scenario).")
+            self._custom_velocity_module = module
+        return self._custom_velocity_module
+
+    def _build_custom_velocity(self):
+        '''
+        Velocity field built by the script custom_veloc_field. The script defines
+
+            build_velocity(scenario) -> VelocityFieldBuilder
+
+        which sets the velocity at the boundaries of a VelocityFieldBuilder(scenario.builder, units='cm/y') (the
+        net flux through the boundaries must be zero, e.g. with conservate_veloc) and returns it; the fields are
+        then created by scenario.builder.create_velocity_field. Optionally, infos(scenario) returns a list of lines
+        that describe the velocity field in infos_<folder>.txt.
+        '''
+        module = self._load_custom_velocity()
+        v = module.build_velocity(self)
+        if(not isinstance(v, VelocityFieldBuilder)):
+            self._fail(f"custom_veloc_field: build_velocity of {self.custom_veloc_field} must return a VelocityFieldBuilder.")
+        self.builder.create_velocity_field(v)
+        self.velocity_builder = v
+        self.h_v_const = None
+        self.VX = self.builder.DTree.fields.vx.values
+        self.VZ = self.builder.DTree.fields.vz.values
+        net = v.integrate_normal_components()
+        inflow = np.abs(self.VX[:, [0, -1]]).max() * self.Lz #scale of the flux through the sides
+        if(abs(net) > 1.0e-6 * max(inflow, 1.0e-30)):
+            print(f"Warning: the velocity field of {os.path.basename(self.custom_veloc_field)} does not conserve mass: "
+                  f"net flux through the boundaries = {net:.3e} m2/s")
         return self.VX, self.VZ
 
     def scale_bcv(self):
@@ -734,6 +793,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
             if(not os.path.exists(target) or not os.path.samefile(self.svg_file, target)):
                 shutil.copy(self.svg_file, target)
 
+        if(copy_svg and self.custom_veloc_field is not None): #the script of the velocity field goes with the SVG
+            target = path(os.path.basename(self.custom_veloc_field))
+            if(not os.path.exists(target) or not os.path.samefile(self.custom_veloc_field, target)):
+                shutil.copy(self.custom_veloc_field, target)
+
         builder = self.builder
         builder.path = output_dir
         builder.export_interfaces(export='none')
@@ -791,6 +855,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         name = os.path.basename(os.path.abspath(output_dir))
         target = os.path.join(output_dir, f'inputs_{name}.zip')
         files = self.INPUT_FILES + [f'infos_{name}.txt', os.path.basename(self.svg_file)]
+        if(self.custom_veloc_field is not None):
+            files.append(os.path.basename(self.custom_veloc_field))
         files = [fname for fname in dict.fromkeys(files) if os.path.isfile(os.path.join(output_dir, fname))]
         with zipfile.ZipFile(target, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
             for fname in files:
@@ -830,7 +896,13 @@ class SVGScenario(SVGChecks, VerboseExtension):
         for ixp, label, color in self.profiles:
             lines.append(f"\t{label}: x = {self.x[ixp]/1.0e3:.0f} km")
         lines += [' ', f"Numerical experiment: {self.regime}", f"Velocity field: {self.velocity_from_ascii}"]
-        if(self.velocity_from_ascii and self.VX is not None):
+        if(self.velocity_from_ascii and self.VX is not None and self.custom_veloc_field is not None):
+            lines.append(f"initial velocity: {self.velocity:g} cm/yr, moving boundary: {self.moving_boundary}")
+            lines.append(f"\tcustom velocity field: {self.custom_veloc_field}")
+            module = self._load_custom_velocity()
+            if(callable(getattr(module, 'infos', None))):
+                lines += [f"\t{line}" for line in module.infos(self)]
+        elif(self.velocity_from_ascii and self.VX is not None):
             lines.append(f"initial velocity: {self.velocity:g} cm/yr")
             lines.append(f"\tmoving boundary: {self.moving_boundary}, constant velocity down to {self.h_v_const/1.0e3:.0f} km below the surface")
         lines += [f"Variable velocity field: {self.variable_bcv}", 'Initial temperature field setup:',
@@ -1049,6 +1121,30 @@ class SVGScenario(SVGChecks, VerboseExtension):
             vmin_left = max(-self.VX[:, 0].min() * scale, 0.0)
             hatch_left = (1 - fac) * min(vmin_left / vmax, 1.0)
             axs.yaxis.set_label_coords(-hatch_left - 0.005, 0.5)
+
+            #velocity across the base (e.g. outflow of a custom velocity field): vertical lines in an inset centred on the base
+            vz_base = self.VZ[np.argmax(self.z), :] * scale #the base is the deepest row
+            vz_max = np.abs(vz_base).max()
+            if(vz_max > 0):
+                axb = axs.inset_axes((0, -(1-fac), 1, (1-fac)*2))
+                axb.set_zorder(axs.get_zorder() - 0.5) #below the other insets
+                axb.fill_between(x / 1.0e3, vz_base, 0, facecolor='none', edgecolor='k', linewidth=0, hatch='|||')
+                axb.set_xlim(0, Lx / 1.0e3)
+                axb.set_ylim(-vz_max, vz_max)
+                axb.set_xticks([])
+                axb.set_yticks([])
+                axb.patch.set_alpha(0)
+                for side in axb.spines:
+                    axb.spines[side].set_visible(False)
+                vz_mean = vz_base[vz_base != 0].mean()
+                axb.text(1.005, 0.25, f'vz = {vz_mean:.3g}\n[cm/y]', transform=axb.transAxes, fontsize=8, ha='left', va='center')
+                #labels of the insets that go below the base (friction angle) on a white box, above the lines
+                for child in axs.child_axes:
+                    if(child is not axb):
+                        for label in child.get_xticklabels() + [child.xaxis.label]:
+                            label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1.0))
+                axs.xaxis.labelpad = 15 #the label of the domain below the lines
+                axs.get_legend().set_bbox_to_anchor((0.5, -0.49), transform=axs.transAxes) #and the legend below the label
 
         fig.savefig(fname, bbox_inches="tight", dpi=300)
         plt.close(fig)

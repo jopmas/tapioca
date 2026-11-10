@@ -1013,9 +1013,7 @@ class SVGScenario(SVGChecks, VerboseExtension):
             legend_label = (f"{layer.title}\n{layer.params['C']:g} x {layer.rheology_name.replace('_', ' ')}\n"
                             + fr"$\rho$ = {layer.params['rho']:.0f} kg/m³" + f"\n$h$ = {legend_thickness(label)}")
             legend_elements.append(Patch(facecolor=layer.color, edgecolor='black', label=legend_label))
-        fig.subplots_adjust(bottom=0.25)
-        axs.legend(handles=legend_elements, ncol=len(legend_elements), loc='lower center', bbox_to_anchor=(0.5, -0.45),
-                   frameon=False, title='Layers properties', title_fontsize=15, fontsize=8, columnspacing=1.0)
+        fig.subplots_adjust(bottom=0.25) #the legend is placed at the end (_legend_below), below the label of the domain
 
 
         ## Idea: get the weak seed from the MandyocBuilder.DTree.interfaces, where weakening_seed > 0
@@ -1074,7 +1072,7 @@ class SVGScenario(SVGChecks, VerboseExtension):
         axsg.tick_params(labelsize=8)
 
         #effective friction angle
-        axsf = axs.inset_axes((0.800, 0, 0.10, 0.30))
+        axsf = axs.inset_axes((0.800, 0.15, 0.10, 0.30)) #above the base, so its labels do not cover the velocity there
         axsf.patch.set_alpha(0.4)
         fisize = 10
         axsf.plot(np.array([0, 0.25, 0.75, 1.0]), np.array([15, 15, 2, 2]), 'k-')
@@ -1138,13 +1136,27 @@ class SVGScenario(SVGChecks, VerboseExtension):
                     axb.spines[side].set_visible(False)
                 vz_mean = vz_base[vz_base != 0].mean()
                 axb.text(1.005, 0.25, f'vz = {vz_mean:.3g}\n[cm/y]', transform=axb.transAxes, fontsize=8, ha='left', va='center')
-                #labels of the insets that go below the base (friction angle) on a white box, above the lines
-                for child in axs.child_axes:
-                    if(child is not axb):
-                        for label in child.get_xticklabels() + [child.xaxis.label]:
-                            label.set_bbox(dict(facecolor='white', edgecolor='none', pad=1.0))
                 axs.xaxis.labelpad = 15 #the label of the domain below the lines
-                axs.get_legend().set_bbox_to_anchor((0.5, -0.49), transform=axs.transAxes) #and the legend below the label
 
+        self._legend_below(fig, axs, legend_elements)
         fig.savefig(fname, bbox_inches="tight", dpi=300)
         plt.close(fig)
+
+    @staticmethod
+    def _legend_below(fig, axs, handles, pad=0.02):
+        '''
+        Legend of the layers below the label of the domain, in as few rows as fit in the width of the domain (the
+        entries are spread evenly over the rows; one entry per row if even a single one is wider).
+        '''
+        fig.canvas.draw() #positions of the labels after the layout
+        renderer = fig.canvas.get_renderer()
+        width = axs.get_window_extent(renderer).width
+        label_bottom = axs.xaxis.label.get_window_extent(renderer).y0 #pixels
+        top = axs.transAxes.inverted().transform((0, label_bottom))[1] - pad #axes fraction
+        for rows in range(1, len(handles) + 1):
+            ncol = int(np.ceil(len(handles) / rows))
+            legend = axs.legend(handles=handles, ncol=ncol, loc='upper center', bbox_to_anchor=(0.5, top),
+                                frameon=False, title='Layers properties', title_fontsize=15, fontsize=8,
+                                columnspacing=1.0)
+            if(legend.get_window_extent(renderer).width <= width or ncol == 1):
+                return legend

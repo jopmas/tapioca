@@ -1174,7 +1174,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
             if(i in sediments):
                 if(i == self.sediment_layers[0]):
                     lines.append(f"\t{i}-{self.sediment_layers[-1]}: {layer.layer_label} ({layer.rheology_name}): "
-                                 f"{len(sediments)} layers of zero thickness deposited by Mandyoc (SP_vc.txt), "
+                                 f"{len(sediments)} layers of zero thickness deposited by Mandyoc "
+                                 f"({'SP_vc.txt' if(self.sp_format == 'SP_vc') else 'sediment_layers.txt'}), "
                                  f"C = {layer.params['C']}, rho = {layer.params['rho']} kg/m3, H = {layer.params['H']:.4g} W/kg")
                 continue
             lines.append(f"\t{i}: {layer.layer_label} ({layer.rheology_name}): h = {slot_thickness(layers, i, ix)/1.0e3:.1f} km, "

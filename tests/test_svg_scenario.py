@@ -671,3 +671,188 @@ def test_custom_veloc_field_checks(tmp_path):
         build_scenario("compression", custom_veloc_field=str(other))
     with pytest.raises(SVGInputError, match="quiescence"):
         build_scenario("compression", regime="quiescence", custom_veloc_field=str(custom_script(tmp_path)))
+
+
+# Surface processes and sedimentation ###############################################
+
+# files of the Mandyoc with the sedimentation of Theunissen and its water layer (the example uses sp_format = ggciag)
+SP_VC = dict(sp_format="SP_vc", water_layer="water")
+
+def test_sedimentation_layers_and_files(tmp_path):
+    """The 70 layers of sediments of zero thickness come from a template drawn outside the domain (as 0.25cm_35km_lc0.5)."""
+    scenario = build_scenario("rifting_sedimentation", **SP_VC)
+    labels = _labels(scenario)
+    assert labels[:5] == ["asthenosphere", "lithospheric_mantle", "lower_crust", "upper_crust", "upper_crust_top"]
+    assert labels[5:75] == ["sediments"] * 70 and labels[75:] == ["water", "air"]
+    assert scenario.sediment_layers == list(range(5, 75)) and scenario.water_layer == 75
+    for i in range(5, 76):  # sediments and water have zero thickness
+        np.testing.assert_allclose(scenario.layers[i].interface, scenario.layers[-1].interface)
+    assert scenario.surface_id == 74
+    np.testing.assert_allclose(scenario.thickness_sa, 40e3)
+    assert scenario.layers[5].params["rho"] == 2400.0 and scenario.layers[75].params["rho"] == 1000.0
+
+    with quiet():
+        scenario.write_all(str(tmp_path), plots=False, scripts=False)
+    sp_vc = (tmp_path / "SP_vc.txt").read_text().splitlines()
+    assert len(sp_vc) == 70
+    assert sp_vc[0] == "0.00 5 25.00 35000.0" and sp_vc[-1] == "69.00 74 25.00 35000.0"
+    assert (tmp_path / "base_level.txt").read_text() == "0.00 -500\n70.00 -500\n"
+    params = (tmp_path / "param.txt").read_text()
+    for line in ["n_interfaces", "sp_surface_processes", "sp_mode", "variable_base_level", "water_interface",
+                 "strain_sed", "air_threshold_density"]:
+        assert re.search(rf"^{line}\s*=", params, re.M), line
+    assert re.search(r"^sp_mode\s*= theunissen_sedimentation", params, re.M)
+    assert re.search(r"^water_interface\s*= 75", params, re.M)
+    assert re.search(r"^n_interfaces\s*= 76", params, re.M)
+    names = zipfile.ZipFile(tmp_path / f"inputs_{tmp_path.name}.zip").namelist()
+    assert "SP_vc.txt" in names and "base_level.txt" in names
+
+
+def test_sedimentation_window():
+    """ti_sed, tf_sed and dt_sed set the number of layers and the times of SP_vc.txt."""
+    scenario = build_scenario("rifting_sedimentation", ti_sed=5, tf_sed=20, dt_sed=2.5, **SP_VC)
+    assert scenario.sediment_times == [5.0, 7.5, 10.0, 12.5, 15.0, 17.5]
+    assert len(scenario.sediment_layers) == 6
+    assert scenario.sp_vc().splitlines()[0] == "5.00 5 25.00 35000.0"
+    # tf_sed defaults to time_max
+    assert len(build_scenario("rifting_sedimentation", tf_sed=None, time_max=30).sediment_times) == 30
+
+
+def test_no_sedimentation_without_surface_processes(tmp_path):
+    scenario = build_scenario("rifting_sedimentation", sp_surface_processes=False, sp_mode="none")
+    assert "sediments" not in _labels(scenario) and scenario.sp_vc() is None
+    params = scenario.parameters()
+    assert params["sp_surface_processes"] is False and "water_interface" not in params
+    # the plain examples are not changed
+    plain = build_scenario("rifting")
+    assert plain.sediment_layers == [] and "sp_mode" not in plain.parameters()
+
+
+@pytest.mark.parametrize("settings, message", [
+    ({"sp_mode": "none"}, "needs sp_mode"),
+    ({"sediment_layer": "basin"}, "no unit labelled 'basin'"),
+    ({"sp_mode": "erosion"}, "Unknown sp_mode"),
+    ({"tf_sed": 0.5, "dt_sed": 1}, "No layer of sediments"),
+    ({"sp_surface_processes": "maybe"}, "True or False")])
+def test_sedimentation_errors(settings, message):
+    with pytest.raises(SVGInputError, match=message):
+        build_scenario("rifting_sedimentation", **settings)
+
+
+def test_unit_layer_of_a_template():
+    layer = reader.unit_layer(str(svg_path("rifting_sedimentation")), "sediments", Nx=11)
+    assert layer.title == "Sediments" and layer.color == "#e8c96b" and layer.params["k"] == 7.0e-7
+    assert reader.unit_layer(str(svg_path("rifting_sedimentation")), "missing", Nx=11) is None
+
+
+def test_cli_sedimentation_options(tmp_path):
+    with quiet():
+        cli.main([str(svg_path("rifting_sedimentation")), "-o", str(tmp_path), "--dx", "10", "--dz", "10", "--no-plots",
+                  "--no-scripts", "--no-zip", "--ti-sed", "10", "--dt-sed", "5", "--base-level", "-200",
+                  "--sp-format", "SP_vc"])
+    assert len((tmp_path / "SP_vc.txt").read_text().splitlines()) == 12
+    assert (tmp_path / "base_level.txt").read_text() == "0.00 -200\n70.00 -200\n"
+
+
+def test_sedimentation_rate_in_steps():
+    """The rate changes in steps; a change between two layers adds a line with the active layer."""
+    scenario = build_scenario("rifting_sedimentation", tf_sed=6, dt_sed=2,
+                              sedimentation_rate="0 Myr: 25, 2 Myr: 50, 3000 kyr: 10", **SP_VC)
+    assert scenario.sedimentation_rates == [(0.0, 25.0), (2.0, 50.0), (3.0, 10.0)]
+    assert scenario.sp_vc().splitlines() == ["0.00 5 25.00 35000.0", "2.00 6 50.00 35000.0",
+                                             "3.00 6 10.00 35000.0", "4.00 7 10.00 35000.0",
+                                             "6.00 7 0.00 35000.0"]  # tf_sed = 6 Myr stops the sedimentation
+    # the same with a dict, from Python
+    same = build_scenario("rifting_sedimentation", tf_sed=6, dt_sed=2, sedimentation_rate={0: 25, 2: 50, 3: 10}, **SP_VC)
+    assert same.sp_vc() == scenario.sp_vc()
+    # a constant rate is the same in every line
+    assert {line.split()[2] for line in build_scenario("rifting_sedimentation", **SP_VC).sp_vc().splitlines()} == {"25.00"}
+
+
+@pytest.mark.parametrize("rate, message", [("5 Myr: 25", "after ti_sed"), ("0: 25, 0: 30", "same time"),
+                                           ("0: 25, 10", "time: rate"), ("0: -1", "at least 0")])
+def test_sedimentation_rate_errors(rate, message):
+    with pytest.raises(SVGInputError, match=message):
+        build_scenario("rifting_sedimentation", sedimentation_rate=rate)
+
+
+def test_cli_sedimentation_rate_in_steps(tmp_path):
+    with quiet():
+        cli.main([str(svg_path("rifting_sedimentation")), "-o", str(tmp_path), "--dx", "10", "--dz", "10", "--no-plots",
+                  "--no-scripts", "--no-zip", "--sedimentation-rate", "0 Myr: 25, 35 Myr: 5", "--sp-format", "SP_vc"])
+    rates = [line.split()[2] for line in (tmp_path / "SP_vc.txt").read_text().splitlines()]
+    assert rates[:35] == ["25.00"] * 35 and rates[35:] == ["5.00"] * 35
+
+
+def test_magmatic_layer_from_a_template():
+    """A template given as magmatic_layer goes below the sediments and the water, with its own material."""
+    scenario = build_scenario("rifting_sedimentation", magmatism="on", magmatism_extraction="on",
+                              magmatic_layer="extrusive_basalt", tf_sed=3, **SP_VC)
+    labels = _labels(scenario)
+    assert labels[4:] == ["upper_crust_top", "extrusive_basalt", "sediments", "sediments", "sediments", "water", "air"]
+    assert scenario.magmatic_layer == 5 and scenario.sediment_layers == [6, 7, 8] and scenario.water_layer == 9
+    assert "basalt" not in labels  # the template replaces the basalt of tapioca
+    basalt = scenario.layers[5]
+    assert basalt.params["rho"] == 2900.0 and basalt.color == "#3b3b3b"
+    np.testing.assert_allclose(basalt.interface, scenario.layers[-1].interface)  # zero thickness
+    params = scenario.parameters()
+    assert params["magmatic_layer"] == 5 and params["water_interface"] == 9
+    assert scenario.sp_vc().splitlines()[0] == "0.00 6 25.00 35000.0"
+
+
+def test_default_basalt_with_sedimentation():
+    """Without magmatic_layer, the basalt of tapioca goes below the sediments and the water."""
+    scenario = build_scenario("rifting_sedimentation", magmatism="on", magmatism_extraction="on", tf_sed=2, **SP_VC)
+    assert _labels(scenario)[4:] == ["upper_crust_top", "basalt", "sediments", "sediments", "water", "air"]
+    assert scenario.magmatic_layer == 5 and scenario.water_layer == 8
+
+
+def test_sp_format_ggciag(tmp_path):
+    """The files of the Mandyoc of ggciag: sediment_layers.txt, sedimentation_rate.txt and base_level.txt with a header."""
+    with quiet():
+        scenario = build_scenario("rifting_sedimentation", sp_format="ggciag", tf_sed=4, dt_sed=2,
+                                  sedimentation_rate="0: 25, 1: 50")
+        scenario.write_all(str(tmp_path), plots=False, scripts=False)
+    assert not (tmp_path / "SP_vc.txt").exists()
+    assert (tmp_path / "sediment_layers.txt").read_text() == "2 5\n0.00 5\n2.00 6\n"
+    # rate 0 at tf_sed stops the sedimentation before time_max
+    assert (tmp_path / "sedimentation_rate.txt").read_text() == "3\n0.00 25\n1.00 50\n4.00 0\n"
+    assert (tmp_path / "base_level.txt").read_text() == "2\n0.00 -500\n70.00 -500\n"
+    params = (tmp_path / "param.txt").read_text()
+    assert "water_interface" not in params and re.search(r"^variable_base_level\s*= True", params, re.M)
+    names = zipfile.ZipFile(tmp_path / f"inputs_{tmp_path.name}.zip").namelist()
+    assert "sediment_layers.txt" in names and "sedimentation_rate.txt" in names
+
+
+def test_sp_format_ggciag_layers_with_diffusion():
+    """The Mandyoc of ggciag reads sediment_layers.txt with any sp_mode, but sedimentation_rate.txt only when it deposits."""
+    scenario = build_scenario("rifting_sedimentation", sp_format="ggciag", sp_mode="diffusion", tf_sed=2)
+    assert set(scenario.sp_files()) == {"sediment_layers.txt", "base_level.txt"}
+    assert build_scenario("rifting_sedimentation", sp_mode="diffusion", **SP_VC).sediment_layers == []  # SP_vc: no layers
+
+
+def test_tf_sed_before_time_max_stops_the_sedimentation():
+    lines = build_scenario("rifting_sedimentation", tf_sed=3, **SP_VC).sp_vc().splitlines()
+    assert lines == ["0.00 5 25.00 35000.0", "1.00 6 25.00 35000.0", "2.00 7 25.00 35000.0", "3.00 7 0.00 35000.0"]
+
+
+def test_default_sp_format_is_ggciag(tmp_path):
+    """Without sp_format, the files are those of the Mandyoc of ggciag, and the example has no water layer."""
+    scenario = build_scenario("rifting_sedimentation", sp_format=None)
+    assert scenario.sp_format == "ggciag" and scenario.water_layer is None
+    assert _labels(scenario)[-2:] == ["sediments", "air"] and len(scenario.layers) == 76
+    assert set(scenario.sp_files()) == {"sediment_layers.txt", "sedimentation_rate.txt", "base_level.txt"}
+    assert "water_interface" not in scenario.parameters()
+
+
+def test_time_conditions_set_by_script_are_written_and_zipped(tmp_path):
+    """A file of time conditions set in the builder by script is written by write_all, with those of the scenario."""
+    scenario = build_scenario("rifting_sedimentation")
+    scenario.builder.set_time_conditions("multi_veloc", {10.0: None})
+    with quiet():
+        scenario.write_all(str(tmp_path), plots=False, scripts=False)
+    assert (tmp_path / "multi_veloc.txt").read_text() == "1\n10.0\n"
+    assert (tmp_path / "sediment_layers.txt").exists()
+    names = zipfile.ZipFile(tmp_path / f"inputs_{tmp_path.name}.zip").namelist()
+    assert "multi_veloc.txt" in names and "sedimentation_rate.txt" in names
+    assert [c.param for c in scenario.time_conditions()] == ["sediment_layers", "sedimentation_rate", "base_level"]

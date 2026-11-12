@@ -2,6 +2,8 @@
 """
 - MandyocBuilder, VelocityFieldBuilder and TemperatureFieldBuilder: generic builders of the
   interfaces, material fields, velocity and temperature of a scenario, used from scripts;
+- GenericTimeConditions: files of conditions that change in time (scale_bcv.txt, sedimentation_rate.txt,
+  sediment_layers.txt, base_level.txt, SP_vc.txt, ...), set with MandyocBuilder.set_time_conditions;
 - checks: InputChecks (and SVGChecks), standardized checks of the input parameters;
 
 - materials: Mandyoc layers (MandyocLayer) and their rheologies;
@@ -20,6 +22,6 @@ from .checks import InputError, SVGInputError
 
 from . import svg
 
-__all__ = ["MandyocBuilder", "VelocityFieldBuilder", "TemperatureFieldBuilder", "InputError", "SVGInputError", "svg"]
+__all__ = ["MandyocBuilder", "VelocityFieldBuilder", "TemperatureFieldBuilder", "GenericTimeConditions", "InputError", "SVGInputError", "svg"]
 
 

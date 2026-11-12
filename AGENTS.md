@@ -9,13 +9,13 @@ Python package (`tapioca-mandyoc`) to build inputs for and post-process outputs 
 - `src/tapioca/_aux_functions.py`: helpers (params, data and interfaces readers, units, heat solvers, yield strength, preset temperature).
 - `src/tapioca/post_processing.py`, `src/tapioca/mandyocPlotter.py`: post-processing and plotting.
 - `src/tapioca/inputs/`: the generic part, so there is no `inputs.generic`.
-  - `generic_input_classes.py`: `GeometryDomain` and `VerboseExtension` (base classes), `MandyocBuilder`, `TemperatureFieldBuilder`, `VelocityFieldBuilder`.
+  - `generic_input_classes.py`: `GeometryDomain` and `VerboseExtension` (base classes), `MandyocBuilder`, `TemperatureFieldBuilder`, `VelocityFieldBuilder`, `GenericTimeConditions` (files of conditions that change in time, e.g. `scale_bcv.txt`, `sedimentation_rate.txt`, set with `MandyocBuilder.set_time_conditions`).
   - `checks.py`: `InputChecks` and `SVGChecks` (checks of the input parameters), `InputError`, `SVGInputError`.
 - `src/tapioca/inputs/svg/`: SVG scenarios (Inkscape drawings): `reader`, `materials`, `scenario` (`SVGScenario`), `cli`, `_variables` (regimes, default `param.txt` values, run scripts).
   - SVG scenarios are built on the generic builders: `SVGScenario.builder` is a `MandyocBuilder`, and every input file is exported through it.
   - Code specific to SVG belongs here, not in the generic builders. Generic helpers go to `_aux_functions.py`.
 - `src/postrunning/`: scripts to organize and convert the outputs of Mandyoc, some copied next to the scenario inputs.
-- `examples/svg_scenarios/`: example SVGs. Every layer has a reference thickness `h`, except the bottom one (the asthenosphere), which fills the rest of the domain.
+- `examples/svg_scenarios/`: example SVGs. Every layer has a reference thickness `h`, except the bottom one (the asthenosphere), which fills the rest of the domain, layers whose thickness changes smoothly along x, and templates drawn outside the domain (materials of layers of zero thickness, e.g. the sediments of `sediment_layer`).
 - `docs/source/abstractions/svg_scenarios.md`: architecture of the SVG scenarios (Mermaid diagrams).
 - `tests/`: pytest suite.
 

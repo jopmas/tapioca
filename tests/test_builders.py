@@ -1,4 +1,5 @@
-"""Tests of the generic builders (tapioca.inputs: MandyocBuilder, VelocityFieldBuilder and TemperatureFieldBuilder)."""
+"""Tests of the generic builders (tapioca.inputs: MandyocBuilder, VelocityFieldBuilder, TemperatureFieldBuilder and
+GenericTimeConditions)."""
 
 import os
 
@@ -6,7 +7,7 @@ import numpy as np
 import pytest
 
 import tapioca as tp
-from tapioca.inputs import MandyocBuilder, TemperatureFieldBuilder, VelocityFieldBuilder
+from tapioca.inputs import GenericTimeConditions, InputError, MandyocBuilder, TemperatureFieldBuilder, VelocityFieldBuilder
 from tapioca.inputs.svg import AIR, DRY_OLIVINE, WET_OLIVINE, WET_QUARTZ
 
 from conftest import quiet
@@ -202,3 +203,88 @@ def test_yield_strength_envelope(builder):
     assert (fields.litho_P >= 0).all()
     assert (fields.YSE <= fields.plastic_YSE).all() and (fields.YSE <= fields.viscous_YSE).all()
     assert (fields.YSE_soft <= fields.YSE + 1e-6).all()  # softening lowers the strength
+
+
+# Time conditions ###################################################################
+
+
+@pytest.mark.parametrize("param, conditions, kwargs, text", [
+    ("scale_bcv", {75.0: 0.01, 25.0: -1.0}, {}, "2\n25.0 -1.0\n75.0 0.01\n"),  # sorted by time
+    ("multi_veloc", {10.0: None, 20.0: None}, {}, "2\n10.0\n20.0\n"),
+    ("sedimentation_rate", {0: 25, 20: 50.5}, {}, "2\n0.00 25\n20.00 50.5\n"),
+    ("sediment_layers", [(0, 5), (1, 6)], {}, "2 5\n0.00 5\n1.00 6\n"),
+    ("base_level", {0: -500, 70: -500}, {}, "2\n0.00 -500\n70.00 -500\n"),
+    ("base_level", {0: -500, 70: -500}, {"header": None}, "0.00 -500\n70.00 -500\n"),
+    ("SP_vc", {0: (5, 25, 35000.0), 1: (6, 25, 35000.0)}, {}, "0.00 5 25.00 35000.0\n1.00 6 25.00 35000.0\n"),
+    ("my_condition", {1: (2, 3)}, {"formats": ("{:g}", "{:d}", "{:.1f}")}, "1\n1 2 3.0\n"),
+    ("my_condition", {1: 2}, {"header": lambda lines: f"# {len(lines)} line"}, "# 1 line\n1.0 2\n"),
+])
+def test_generic_time_conditions_text(param, conditions, kwargs, text):
+    assert GenericTimeConditions(param, conditions, **kwargs).text() == text
+
+
+def test_generic_time_conditions_file_names():
+    assert GenericTimeConditions("scale_bcv", {0: 1}).fname == "scale_bcv.txt"
+    assert GenericTimeConditions("my_condition", {0: 1}).fname == "my_condition.txt"
+    assert GenericTimeConditions("base_level", {0: 1}, fname="sea.txt").fname == "sea.txt"
+
+
+@pytest.mark.parametrize("conditions, kwargs, message", [
+    ({}, {}, "no time condition"),
+    ({0: (1, 2), 1: 3}, {}, "same number of values"),
+    ([1, 2], {}, "time: value"),
+    ({0: 1}, {"formats": ("{}",)}, "1 formats for 2 columns"),
+    ({0: 1}, {"header": "lines"}, "header must be"),
+])
+def test_generic_time_conditions_errors(conditions, kwargs, message):
+    with pytest.raises(InputError, match=message):
+        GenericTimeConditions("my_condition", conditions, **kwargs)
+
+
+def test_builder_time_conditions(tmp_path):
+    builder = MandyocBuilder(str(tmp_path), Nx=3, Nz=3, Lx=10.0, Lz=10.0)
+    builder.set_time_conditions("sedimentation_rate", {0: 25})
+    builder.set_time_conditions("sedimentation_rate", {0: 30})  # replaces the file set before
+    builder.set_time_conditions("base_level", {0: -100})
+    written = builder.export_time_conditions()
+    assert sorted(os.path.basename(f) for f in written) == ["base_level.txt", "sedimentation_rate.txt"]
+    assert (tmp_path / "sedimentation_rate.txt").read_text() == "1\n0.00 30\n"
+
+
+def test_generic_time_conditions_table():
+    """The conditions are stored as a table: the column time and the named columns of the values, sorted by time."""
+    import pandas as pd
+    sp_vc = GenericTimeConditions("SP_vc", {1: (6, 25, 35000.0), 0: (5, 25, 35000.0)})
+    assert list(sp_vc.table.columns) == ["time", "layer", "rate", "Ld"]
+    assert sp_vc.table["time"].tolist() == [0.0, 1.0] and sp_vc.table["layer"].tolist() == [5, 6]
+    # the same conditions from a DataFrame (columns in any order), the time as index, or a dict of columns
+    df = pd.DataFrame({"rate": [25, 25], "layer": [6, 5], "Ld": [35000.0, 35000.0], "time": [1.0, 0.0]})
+    assert GenericTimeConditions("SP_vc", df).text() == sp_vc.text()
+    assert GenericTimeConditions("SP_vc", df.set_index("time")).text() == sp_vc.text()
+    assert GenericTimeConditions("SP_vc", df.to_dict(orient="list")).text() == sp_vc.text()
+    # a DataFrame with other names takes the names of the file
+    rate = GenericTimeConditions("sedimentation_rate", pd.DataFrame({"time": [0, 20], "Qs": [25, 50]}))
+    assert list(rate.table.columns) == ["time", "rate"] and rate.text() == "2\n0.00 25\n20.00 50\n"
+    # other conditions: columns given or value_1, value_2, ...
+    assert list(GenericTimeConditions("mine", {0: (1, 2)}).table.columns) == ["time", "value_1", "value_2"]
+    assert list(GenericTimeConditions("mine", {0: 1}, columns=["v"]).table.columns) == ["time", "v"]
+
+
+@pytest.mark.parametrize("param, text", [("scale_bcv", "4\n25.0 -1.0\n75.0 0.01\n85.0 -100.0\n145.0 0.01\n"),
+                                         ("sediment_layers", "2 5\n0.00 5\n1.00 6\n"),
+                                         ("SP_vc", "0.00 5 25.00 35000.0\n2.50 5 40.00 35000.0\n"),
+                                         ("multi_veloc", "2\n10.0\n20.0\n")])
+def test_generic_time_conditions_read(tmp_path, param, text):
+    """A file of Mandyoc read back gives the same table and the same text."""
+    path = tmp_path / "input.txt"
+    path.write_text(text)
+    conditions = GenericTimeConditions.read(param, str(path))
+    assert conditions.text() == text and conditions.fname == "input.txt"
+
+
+def test_generic_time_conditions_table_errors():
+    import pandas as pd
+    with pytest.raises(InputError, match="named 'time'"):
+        GenericTimeConditions("sedimentation_rate", pd.DataFrame({"t": [0], "rate": [1]}))
+    with pytest.raises(InputError, match="columns are"):
+        GenericTimeConditions("SP_vc", {0: (5, 25)})

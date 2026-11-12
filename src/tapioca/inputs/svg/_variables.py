@@ -5,7 +5,7 @@ scripts written with the input files.
 
 import os
 
-__all__ = ["REGIMES", "MANTLE_RHEOLOGIES", "SYSTEMS", "DEFAULT_PARAMS",
+__all__ = ["REGIMES", "MANTLE_RHEOLOGIES", "SYSTEMS", "DEFAULT_PARAMS", "SP_MODES", "SEDIMENTATION_MODES", "SP_PARAMS", "SP_FORMATS",
            "ORGANIZE_SCRIPT", "RUN_SCRIPT", "POST_PROCESSING_SCRIPT", "NO_POST_PROCESSING_SCRIPT",
            "RUN_LAUNCHER", "PETSC_ENV", "PETSC_ENV_LOOKUP", "ZIP_SCRIPT", "HYPATIA", "HYPATIA_SCRIPT",
            "HYPATIA_CONDA_SCRIPT"]
@@ -16,6 +16,18 @@ MANTLE_RHEOLOGIES:list = ['wet_olivine', 'dry_olivine']
 """list: Rheologies of the lithospheric mantle (its thickness is the reference of the velocity with h_v_reference = 'lithospheric_mantle')."""
 SYSTEMS:list = ['linux', 'mac', 'hypatia']
 """list: Systems of the run scripts (hypatia: SLURM job on Hypatia, the cluster of the group)."""
+
+SP_MODES:list = ['none', 'diffusion', 'sedimentation_only', 'sedimentation_rate_limited', 'theunissen_sedimentation']
+"""list: Modes of surface processes of Mandyoc (sp_mode of param.txt)."""
+SEDIMENTATION_MODES:list = ['sedimentation_rate_limited', 'theunissen_sedimentation']
+"""list: Modes of surface processes that deposit layers of sediments (SP_vc.txt)."""
+SP_FORMATS:list = ['ggciag', 'SP_vc']
+"""list: Formats of the files of the sedimentation: ggciag (default; sediment_layers.txt and sedimentation_rate.txt, the
+Mandyoc of ggciag) or SP_vc (SP_vc.txt, the Mandyoc with the sedimentation of Theunissen, mandyoc_tests)."""
+SP_PARAMS:tuple = ('sp_surface_tracking', 'sp_d_c', 'plot_sediment', 'a2l', 'surface_particles_per_element',
+                   'continental_slope', 'strain_sed', 'sea_level', 'K_fluvial', 'm_fluvial', 'air_threshold_density')
+"""tuple: Parameters of param.txt about the surface processes that may be given in the setup shape of the SVG (besides
+sp_surface_processes and sp_mode); they are written to param.txt as given."""
 
 #Script of tapioca that moves the outputs of Mandyoc to one folder per variable (copied to the scenario)
 ORGANIZE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'postrunning', '0_organize_outputs.sh')
@@ -216,6 +228,10 @@ patterns=(
 "vel_bc.txt"
 "velz_bc.txt"
 "scale_bcv.txt"
+"SP_vc.txt"
+"sediment_layers.txt"
+"sedimentation_rate.txt"
+"base_level.txt"
 "infos_*.txt"
 "*.svg"
 "run*.sh"

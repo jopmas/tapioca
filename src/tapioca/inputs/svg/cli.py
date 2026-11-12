@@ -6,6 +6,8 @@ Command line interface of the scenario builder:
                 [--magmatism off] [--magmatism-extraction off] [--magmatism-Ts0 1080]
                 [--heat-capacity 1250] [--thermal-expansion-coefficient 3.28e-5] [--gravity-acceleration 10]
                 [--preset-initial-temperature path/to/preliminary] [--custom-veloc-field build_veloc.py]
+                [--sp-surface-processes True] [--sp-mode theunissen_sedimentation] [--sp-format ggciag] [--sediment-layer sediments]
+                [--ti-sed 0] [--tf-sed 70] [--dt-sed 1] [--sedimentation-rate "0 Myr: 25, 20 Myr: 50"] [--Ld 35000] [--base-level -500]
                 [--min-thickness 1] [--no-plots]
                 [--system linux] [--ncores 20] [--job-name NAME] [--mail-user E-MAIL] [--mandyoc-options="-seed 0,5,8 -strain_seed 0.0,1.0,1.0"] [--no-scripts] [--no-zip]
                 [--no-post-processing]
@@ -18,7 +20,7 @@ import argparse
 import sys
 
 from .reader import SVGInputError
-from ._variables import REGIMES, SYSTEMS
+from ._variables import REGIMES, SYSTEMS, SP_MODES, SP_FORMATS
 from .scenario import SVGScenario
 
 __all__ = ["main"]
@@ -63,6 +65,20 @@ def main(argv=None):
     parser.add_argument('--temperature-solver', choices=['2D', 'columns'], help='steady-state conduction in the lithosphere: '
                                                                                 '2D (whole lithosphere) or columns (each column '
                                                                                 'alone) (default: from the SVG, or 2D)')
+    parser.add_argument('--sp-surface-processes', choices=['True', 'False'], help='surface processes in Mandyoc (default: from the SVG, or False)')
+    parser.add_argument('--sp-mode', choices=SP_MODES, help='sp_mode of param.txt (default: from the SVG, or none)')
+    parser.add_argument('--sp-format', choices=SP_FORMATS, help='files of the sedimentation: ggciag (sediment_layers.txt and '
+                                                                'sedimentation_rate.txt) or SP_vc (SP_vc.txt, mandyoc_tests) '
+                                                                '(default: from the SVG, or ggciag)')
+    parser.add_argument('--sediment-layer', help='label of the unit of the layers of sediments, drawn in the domain or as a '
+                                                 'template outside it (default: from the SVG)')
+    parser.add_argument('--ti-sed', type=float, help='time of the first layer of sediments [Myr] (default: from the SVG, or 0)')
+    parser.add_argument('--tf-sed', type=float, help='end of the sedimentation [Myr] (default: from the SVG, or time_max)')
+    parser.add_argument('--dt-sed', type=float, help='duration of each layer of sediments [Myr] (default: from the SVG, or 1)')
+    parser.add_argument('--sedimentation-rate', help='sedimentation rate of SP_vc.txt: a number, or steps in time as '
+                                                     '"0 Myr: 25, 20 Myr: 50" (default: from the SVG, or 25)')
+    parser.add_argument('--Ld', type=float, help='Ld of SP_vc.txt [m] (default: from the SVG, or 35000)')
+    parser.add_argument('--base-level', type=float, help='base level [m] of base_level.txt (default: from the SVG, or none)')
     parser.add_argument('--min-thickness', type=float, help='remove thinner pieces [km] of units drawn thicker elsewhere, left by '
                                                             'overlapping shapes; 0 keeps them (default: from the SVG, or 1 km)')
     parser.add_argument('--no-plots', action='store_true', help='do not create numerical_setup.png and initial_temperature.png')
@@ -92,6 +108,10 @@ def main(argv=None):
                                custom_veloc_field=args.custom_veloc_field,
                                temperature_solver=args.temperature_solver, water_layer=args.water_layer,
                                magmatic_layer=args.magmatic_layer,
+                               sp_surface_processes=args.sp_surface_processes, sp_mode=args.sp_mode, sp_format=args.sp_format,
+                               sediment_layer=args.sediment_layer, ti_sed=args.ti_sed, tf_sed=args.tf_sed,
+                               dt_sed=args.dt_sed, sedimentation_rate=args.sedimentation_rate, Ld=args.Ld,
+                               base_level=args.base_level,
                                min_thickness=args.min_thickness)
         scenario.write_all(args.output_dir, plots=not args.no_plots, scripts=not args.no_scripts, system=args.system,
                            ncores=args.ncores, mandyoc_options=args.mandyoc_options,

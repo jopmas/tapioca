@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from tapioca.inputs.svg import INKSCAPE_VERSION, SVG_VERSION, SVGInputError, SVGScenario, svg_versions, layers_from_svg, layers_to_builder, read_setup, read_units, write_interfaces
-from tapioca.inputs.svg.reader import eval_number, parse_description
+from tapioca.inputs.svg.reader import eval_number, parse_description, layer_thickness
 
 from conftest import SVG_SCENARIOS, quiet, svg_path
 
@@ -59,11 +59,18 @@ def test_example_setup(name):
 
 @pytest.mark.parametrize("name", SVG_SCENARIOS)
 def test_example_units_have_reference_thickness(name):
-    '''Every unit of the examples gives h, except the bottom one (asthenosphere), which fills the rest of the domain.'''
+    '''
+    Every unit of the examples gives h, except the bottom one (asthenosphere), which fills the rest of the domain, the
+    templates drawn outside the domain (e.g. the sediments of rifting_sedimentation) and the layers whose thickness
+    changes smoothly along x (no constant thickness to scale to h, e.g. the thickened crust of rifting_sedimentation).
+    '''
     _, units = read_units(str(svg_path(name)))
     _, layers = _layers(svg_path(name))
     bottom = layers[0].layer_label
-    without_h = [label for label, unit in units.items() if unit["thickness"] is None and label != bottom]
+    thickness = {label: layer_thickness(layers, label, slice(None)) for label in {layer.layer_label for layer in layers}}
+    varying = {label for label, th in thickness.items() if np.mean(np.isclose(th, np.median(th), atol=100.0)) < 0.5}
+    without_h = [label for label, unit in units.items()
+                 if unit["thickness"] is None and label != bottom and label in thickness and label not in varying]
     assert without_h == []
     assert units[bottom]["thickness"] is None
 

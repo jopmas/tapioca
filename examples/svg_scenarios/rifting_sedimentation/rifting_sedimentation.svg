@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Symmetric rifting with sedimentation (theunissen_sedimentation), as the scenario 0.25cm_35km_lc0.5.
+     1 user unit = 1 km; the setup shape is the model domain (1200 x 400 km). The crust is 5 km thicker at the
+     centre (cosine). The shapes in the "templates" layer are drawn below the domain: they only give the material of
+     layers of zero thickness added by tapioca: the 70 layers of sediments deposited by Mandyoc (sediment_layer), the
+     water (water_layer, only with sp_format = SP_vc) and, with magmatism_extraction = on, the extrusive basalt
+     (magmatic_layer). sp_format = ggciag (default) writes sediment_layers.txt and sedimentation_rate.txt for the
+     Mandyoc of ggciag; sp_format = SP_vc writes SP_vc.txt for the Mandyoc with the sedimentation of Theunissen
+     (mandyoc_tests, on Hypatia); with sp_format = SP_vc and water_layer = water, the inputs of 0.25cm_35km_lc0.5. -->
+
+<svg
+   width="1200mm"
+   height="440mm"
+   viewBox="0 0 1200 440"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="rifting_sedimentation.svg"
+   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="0.01563447"
+     inkscape:cx="2238.6432"
+     inkscape:cy="831.49606"
+     inkscape:window-width="1356"
+     inkscape:window-height="695"
+     inkscape:window-x="0"
+     inkscape:window-y="33"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer_setup" />
+  <g
+     inkscape:groupmode="layer"
+     id="layer1"
+     inkscape:label="lithologies">
+    <rect
+       id="asthenosphere"
+       inkscape:label="asthenosphere"
+       x="0"
+       y="0"
+       width="1200"
+       height="400"
+       style="fill:#82a960;stroke:none">
+      <title
+         id="title1">Asthenosphere</title>
+      <desc
+         id="desc1">wet olivine
+C = 1.0
+rho = 3378.0
+H = 0.0
+A = 1.393e-14
+n = 3.0
+Q = 429.0e3
+V = 14.5e-6
+k = 1.2e-6
+cohesion_min = 5.0e6
+cohesion_max = 20.0e6
+friction_angle_min = 5.0
+friction_angle_max = 20.0</desc>
+    </rect>
+    <rect
+       id="lithospheric_mantle"
+       inkscape:label="lithospheric_mantle"
+       x="0"
+       y="0"
+       width="1200"
+       height="160"
+       style="fill:#577343;stroke:none">
+      <title
+         id="title2">Lithospheric mantle</title>
+      <desc
+         id="desc2">dry olivine
+C = 1.0
+rho = 3354.0
+H = 9.0e-12
+A = 2.417e-15
+n = 3.5
+Q = 540.0e3
+V = 24.5e-6
+k = 1.2e-6
+cohesion_min = 5.0e6
+cohesion_max = 20.0e6
+friction_angle_min = 5.0
+friction_angle_max = 20.0</desc>
+    </rect>
+    <path
+       id="lower_crust"
+       inkscape:label="lower_crust"
+       d="M 0,0 L 1200,0 L 1200,72.5000 L 1190,72.5034 L 1180,72.5137 L 1170,72.5308 L 1160,72.5546 L 1150,72.5852 L 1140,72.6224 L 1130,72.6660 L 1120,72.7161 L 1110,72.7725 L 1100,72.8349 L 1090,72.9033 L 1080,72.9775 L 1070,73.0571 L 1060,73.1421 L 1050,73.2322 L 1040,73.3272 L 1030,73.4267 L 1020,73.5305 L 1010,73.6384 L 1000,73.7500 L 990,73.8650 L 980,73.9832 L 970,74.1041 L 960,74.2275 L 950,74.3530 L 940,74.4802 L 930,74.6089 L 920,74.7387 L 910,74.8692 L 900,75.0000 L 890,75.1308 L 880,75.2613 L 870,75.3911 L 860,75.5198 L 850,75.6470 L 840,75.7725 L 830,75.8959 L 820,76.0168 L 810,76.1350 L 800,76.2500 L 790,76.3616 L 780,76.4695 L 770,76.5733 L 760,76.6728 L 750,76.7678 L 740,76.8579 L 730,76.9429 L 720,77.0225 L 710,77.0967 L 700,77.1651 L 690,77.2275 L 680,77.2839 L 670,77.3340 L 660,77.3776 L 650,77.4148 L 640,77.4454 L 630,77.4692 L 620,77.4863 L 610,77.4966 L 600,77.5000 L 590,77.4966 L 580,77.4863 L 570,77.4692 L 560,77.4454 L 550,77.4148 L 540,77.3776 L 530,77.3340 L 520,77.2839 L 510,77.2275 L 500,77.1651 L 490,77.0967 L 480,77.0225 L 470,76.9429 L 460,76.8579 L 450,76.7678 L 440,76.6728 L 430,76.5733 L 420,76.4695 L 410,76.3616 L 400,76.2500 L 390,76.1350 L 380,76.0168 L 370,75.8959 L 360,75.7725 L 350,75.6470 L 340,75.5198 L 330,75.3911 L 320,75.2613 L 310,75.1308 L 300,75.0000 L 290,74.8692 L 280,74.7387 L 270,74.6089 L 260,74.4802 L 250,74.3530 L 240,74.2275 L 230,74.1041 L 220,73.9832 L 210,73.8650 L 200,73.7500 L 190,73.6384 L 180,73.5305 L 170,73.4267 L 160,73.3272 L 150,73.2322 L 140,73.1421 L 130,73.0571 L 120,72.9775 L 110,72.9033 L 100,72.8349 L 90,72.7725 L 80,72.7161 L 70,72.6660 L 60,72.6224 L 50,72.5852 L 40,72.5546 L 30,72.5308 L 20,72.5137 L 10,72.5034 L 0,72.5000 Z"
+       style="fill:#c2a582;stroke:none">
+      <title
+         id="title3">Lower crust</title>
+      <desc
+         id="desc3">wet anorthite
+C = 0.5
+rho = 2800.0
+H = 7.123e-11
+h = 10 km
+A = 3.9810717e-16
+n = 3.0
+Q = 356.0e3
+V = 0.0
+k = 1.15e-6
+cohesion_min = 5.0e6
+cohesion_max = 25.0e6
+friction_angle_min = 5.0
+friction_angle_max = 20.0</desc>
+    </path>
+    <path
+       id="upper_crust"
+       inkscape:label="upper_crust"
+       d="M 0,0 L 1200,0 L 1200,62.5000 L 1190,62.5034 L 1180,62.5137 L 1170,62.5308 L 1160,62.5546 L 1150,62.5852 L 1140,62.6224 L 1130,62.6660 L 1120,62.7161 L 1110,62.7725 L 1100,62.8349 L 1090,62.9033 L 1080,62.9775 L 1070,63.0571 L 1060,63.1421 L 1050,63.2322 L 1040,63.3272 L 1030,63.4267 L 1020,63.5305 L 1010,63.6384 L 1000,63.7500 L 990,63.8650 L 980,63.9832 L 970,64.1041 L 960,64.2275 L 950,64.3530 L 940,64.4802 L 930,64.6089 L 920,64.7387 L 910,64.8692 L 900,65.0000 L 890,65.1308 L 880,65.2613 L 870,65.3911 L 860,65.5198 L 850,65.6470 L 840,65.7725 L 830,65.8959 L 820,66.0168 L 810,66.1350 L 800,66.2500 L 790,66.3616 L 780,66.4695 L 770,66.5733 L 760,66.6728 L 750,66.7678 L 740,66.8579 L 730,66.9429 L 720,67.0225 L 710,67.0967 L 700,67.1651 L 690,67.2275 L 680,67.2839 L 670,67.3340 L 660,67.3776 L 650,67.4148 L 640,67.4454 L 630,67.4692 L 620,67.4863 L 610,67.4966 L 600,67.5000 L 590,67.4966 L 580,67.4863 L 570,67.4692 L 560,67.4454 L 550,67.4148 L 540,67.3776 L 530,67.3340 L 520,67.2839 L 510,67.2275 L 500,67.1651 L 490,67.0967 L 480,67.0225 L 470,66.9429 L 460,66.8579 L 450,66.7678 L 440,66.6728 L 430,66.5733 L 420,66.4695 L 410,66.3616 L 400,66.2500 L 390,66.1350 L 380,66.0168 L 370,65.8959 L 360,65.7725 L 350,65.6470 L 340,65.5198 L 330,65.3911 L 320,65.2613 L 310,65.1308 L 300,65.0000 L 290,64.8692 L 280,64.7387 L 270,64.6089 L 260,64.4802 L 250,64.3530 L 240,64.2275 L 230,64.1041 L 220,63.9832 L 210,63.8650 L 200,63.7500 L 190,63.6384 L 180,63.5305 L 170,63.4267 L 160,63.3272 L 150,63.2322 L 140,63.1421 L 130,63.0571 L 120,62.9775 L 110,62.9033 L 100,62.8349 L 90,62.7725 L 80,62.7161 L 70,62.6660 L 60,62.6224 L 50,62.5852 L 40,62.5546 L 30,62.5308 L 20,62.5137 L 10,62.5034 L 0,62.5000 Z"
+       style="fill:#6f7c9e;stroke:none">
+      <title
+         id="title4">Upper crust</title>
+      <desc
+         id="desc4">wet quartz
+C = 1.0
+rho = 2700.0
+H = 4.8e-10
+A = 8.574e-28
+n = 4.0
+Q = 222.0e3
+V = 0.0
+k = 1.0e-6
+cohesion_min = 1.0e6
+cohesion_max = 20.0e6
+friction_angle_min = 5.0
+friction_angle_max = 20.0</desc>
+    </path>
+    <rect
+       id="upper_crust_top"
+       inkscape:label="upper_crust_top"
+       x="0"
+       y="0"
+       width="1200"
+       height="42"
+       style="fill:#0b1550;stroke:none">
+      <title
+         id="title5">Upper crust (top)</title>
+      <desc
+         id="desc5">wet quartz
+C = 1.0
+rho = 2700.0
+H = 4.8e-10
+h = 2 km
+A = 8.574e-28
+n = 4.0
+Q = 222.0e3
+V = 0.0
+k = 1.0e-6
+cohesion_min = 1.0e6
+cohesion_max = 20.0e6
+friction_angle_min = 5.0
+friction_angle_max = 20.0</desc>
+    </rect>
+    <rect
+       id="air"
+       inkscape:label="air"
+       x="0"
+       y="0"
+       width="1200"
+       height="40"
+       style="fill:#ffffff;stroke:none">
+      <title
+         id="title6">Sticky air</title>
+      <desc
+         id="desc6">air
+C = 0.1
+rho = 1.0
+H = 0.0
+h = 40 km
+A = 1.0e-18
+n = 1.0
+Q = 0.0
+V = 0.0
+k = 1.0e-5
+cohesion_min = 1.0e5
+cohesion_max = 1.0e6
+friction_angle_min = 2.0
+friction_angle_max = 5.0</desc>
+    </rect>
+  </g>
+  <g
+     inkscape:groupmode="layer"
+     id="layer_templates"
+     inkscape:label="templates">
+    <!-- outside the domain: materials of the layers of zero thickness added by tapioca -->
+    <rect
+       id="sediments"
+       inkscape:label="sediments"
+       x="0"
+       y="410"
+       width="120"
+       height="20"
+       style="fill:#e8c96b;stroke:#000000;stroke-width:0.5">
+      <title
+         id="title7">Sediments</title>
+      <desc
+         id="desc7">wet quartz
+C = 1.0
+rho = 2400.0
+H = 5.417e-10
+A = 8.574e-28
+n = 4.0
+Q = 222.0e3
+V = 0.0
+k = 7.0e-7
+cohesion_min = 5.0e6
+cohesion_max = 10.0e6
+friction_angle_min = 5.0
+friction_angle_max = 15.0</desc>
+    </rect>
+    <rect
+       id="water"
+       inkscape:label="water"
+       x="140"
+       y="410"
+       width="120"
+       height="20"
+       style="fill:#4f9fd8;stroke:#000000;stroke-width:0.5">
+      <title
+         id="title8">Water</title>
+      <desc
+         id="desc8">air
+C = 0.1
+rho = 1000.0
+H = 0.0
+A = 1.0e-18
+n = 1.0
+Q = 0.0
+V = 0.0
+k = 1.0e-5
+cohesion_min = 1.0e5
+cohesion_max = 1.0e6
+friction_angle_min = 2.0
+friction_angle_max = 5.0</desc>
+    </rect>
+    <rect
+       id="extrusive_basalt"
+       inkscape:label="extrusive_basalt"
+       x="280"
+       y="410"
+       width="120"
+       height="20"
+       style="fill:#3b3b3b;stroke:#000000;stroke-width:0.5">
+      <title
+         id="title9">Extrusive basalt</title>
+      <desc
+         id="desc9">basalt
+C = 1.0
+rho = 2900.0
+H = 9.0e-11
+k = 1.0e-6</desc>
+    </rect>
+  </g>
+  <g
+     inkscape:groupmode="layer"
+     id="layer_setup"
+     inkscape:label="domain">
+    <rect
+       id="setup"
+       inkscape:label="setup"
+       x="0"
+       y="0"
+       width="1200"
+       height="400"
+       style="fill:none;stroke:#ff0000;stroke-width:1">
+      <title
+         id="title_setup">Model setup</title>
+      <desc
+         id="desc_setup">Lx = 1200 km
+Lz = 400 km
+dx = 1 km
+dz = 1 km
+regime = rifting
+velocity = 0.5 cm/yr   # 0.25 cm/yr at each side
+moving_boundary = symmetric
+time_max = 70 Myr
+# water_layer = water           # only with sp_format = SP_vc: template below the domain, zero thickness below the air
+# magmatism (off here): the melt extracted by Mandyoc goes to the template extrusive_basalt
+# magmatism = on
+# magmatism_extraction = on
+# magmatic_layer = extrusive_basalt
+# surface processes
+sp_surface_processes = True
+sp_mode = theunissen_sedimentation
+sp_format = ggciag              # ggciag (default; sediment_layers.txt, sedimentation_rate.txt) or SP_vc (mandyoc_tests, Hypatia)
+sediment_layer = sediments      # template below the domain: one layer of zero thickness every dt_sed
+ti_sed = 0 Myr
+# tf_sed = 70 Myr               (default: time_max; before time_max, the sedimentation stops there)
+dt_sed = 1 Myr
+sedimentation_rate = 25         # m2/yr; or in steps: 0 Myr: 25, 20 Myr: 50, 40 Myr: 10
+Ld = 35 km                      # sediment dispersion length (fixed at 35 km in the Mandyoc of ggciag)
+base_level = -500 m
+sp_d_c = 1.0
+strain_sed = 0.25
+continental_slope = 2.0
+a2l = True
+plot_sediment = False
+surface_particles_per_element = 50
+air_threshold_density = 1100.0</desc>
+    </rect>
+  </g>
+</svg>

@@ -24,6 +24,38 @@ experiment:
     custom_veloc_field = build_veloc.py        (Python script with build_velocity(scenario))
     temperature_solver = 2D                    (2D or columns)
     min_thickness = 1 km
+    water_layer = water                        (drawn below the air, or a template outside the domain)
+    sp_surface_processes = True                (surface processes, see below)
+    sp_mode = theunissen_sedimentation
+    sp_format = ggciag                         (ggciag or SP_vc: files of the version of Mandyoc)
+    sediment_layer = sediments                 (unit of the deposited layers, usually a template outside the domain)
+    ti_sed = 0 Myr
+    tf_sed = 70 Myr                            (default: time_max)
+    dt_sed = 1 Myr
+    sedimentation_rate = 25                    (or in steps: 0 Myr: 25, 20 Myr: 50, 40 Myr: 10)
+    Ld = 35 km
+    base_level = -500 m
+    strain_sed = 0.25                          (and the other parameters of SP_PARAMS, written to param.txt)
+
+Sedimentation: with sp_surface_processes = True and a sp_mode that deposits sediments (SEDIMENTATION_MODES), one
+layer of zero thickness with the material of sediment_layer is added at the top of the solid layers for each
+interval of dt_sed between ti_sed and tf_sed. sedimentation_rate [m2/yr] may change in time: "t1: rate1, t2: rate2,
+..." (times in Myr, or with units) is constant in steps, each rate from its time on. The unit of sediment_layer does
+not need to be drawn in the domain: a shape drawn outside the setup shape gives its material (a template), and the
+same holds for the water of water_layer (a layer of zero thickness below the sticky air) and for the magmatic_layer
+(a layer of zero thickness at the top of the solid layers; without magmatic_layer, the basalt of tapioca). With
+base_level, base_level.txt keeps the base level of Mandyoc at that height [m] (variable_base_level = True).
+
+The files depend on the version of Mandyoc (sp_format):
+  - ggciag (default), the Mandyoc of ggciag (https://github.com/ggciag/mandyoc): sediment_layers.txt (the time and the
+    ID of each layer; written with every sp_mode, since Mandyoc reads it whenever sp_surface_processes is True),
+    sedimentation_rate.txt (the time and the rate of each change) and base_level.txt, each with the number of lines
+    first. Ld is fixed at 35 km in its code and it has no water layer, so water_interface is not written;
+  - SP_vc, the Mandyoc with the sedimentation of Theunissen (mandyoc_tests, of the group): SP_vc.txt (one line per
+    change: time [Myr], ID of the active layer, sedimentation_rate and Ld [m]; a change of the rate between the times
+    of two layers adds a line with the layer that is active then), base_level.txt without the number of lines and
+    water_interface in param.txt. The Mandyoc of ggciag stops at water_interface, which it does not know.
+With both, a tf_sed before time_max adds a last change at tf_sed with rate 0, which stops the sedimentation.
 
 Each setting may also be given to SVGScenario (or on the command line, tapioca-svg),
 which overrides the SVG; without it, the default is used.
@@ -48,9 +80,10 @@ from matplotlib.patches import Patch
 
 from ..._variables import SEC_PER_YEAR, PARAMS_TYPES
 from ..._aux_functions import find_nearest, read_preset_temperature, adapt_preset_temperature
-from ..generic_input_classes import TemperatureFieldBuilder, VelocityFieldBuilder, VerboseExtension
+from ..generic_input_classes import TemperatureFieldBuilder, VelocityFieldBuilder, VerboseExtension, GenericTimeConditions
 from ..checks import SVGChecks
-from ._variables import (REGIMES, MANTLE_RHEOLOGIES, SYSTEMS, DEFAULT_PARAMS, ORGANIZE_SCRIPT, RUN_SCRIPT,
+from ._variables import (REGIMES, MANTLE_RHEOLOGIES, SYSTEMS, DEFAULT_PARAMS, SP_MODES, SEDIMENTATION_MODES, SP_PARAMS, SP_FORMATS,
+                         ORGANIZE_SCRIPT, RUN_SCRIPT,
                          POST_PROCESSING_SCRIPT, NO_POST_PROCESSING_SCRIPT,
                          RUN_LAUNCHER, PETSC_ENV, PETSC_ENV_LOOKUP, ZIP_SCRIPT, HYPATIA, HYPATIA_SCRIPT,
                          HYPATIA_CONDA_SCRIPT)
@@ -58,7 +91,7 @@ from .materials import MandyocLayer, BASALT
 from ... import __version__
 from .reader import (SVGInputError, SETUP_LABEL, MIN_THICKNESS, EXPERIMENT_KEYS, SVG_VERSION, INKSCAPE_VERSION,
                      svg_versions, read_setup, layers_from_svg, layers_to_builder, points_from_spacing, parse_quantity,
-                     layer_indices, slot_thickness, layer_thickness)
+                     layer_indices, slot_thickness, layer_thickness, unit_layer)
 
 # (setting, minimum, value must be greater than the minimum): used in param.txt and in the initial temperature
 THERMAL_SETTINGS = (("heat_capacity", 0.0, True),
@@ -119,7 +152,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         the solid layers) is then its base. Default: none (no water).
     magmatic_layer : str or int, optional
         Label (or ID from the bottom) of the layer that receives the melt extracted by Mandyoc (magmatic_layer of
-        param.txt). Default: with magmatism and magmatism_extraction on, a basalt layer of zero thickness added at
+        param.txt). A unit drawn only outside the domain (a template, e.g. a basalt with its own material) becomes a
+        layer of zero thickness at the top of the solid layers, below the sediments and the water. Default: with magmatism and magmatism_extraction on, a basalt layer of zero thickness added at
         the top of the solid layers (below the water if there is water, otherwise below the sticky air); otherwise
         the top solid layer. A layer given here is used as it is, so no basalt layer is added.
     preset_initial_temperature : str, optional
@@ -220,10 +254,21 @@ class SVGScenario(SVGChecks, VerboseExtension):
         self._check_layers(self.layers, svg_file, asthenosphere_label)
 
         #water and magmatic layers: chosen by the user (label, or ID of the layer from the bottom), never guessed
-        self.water_layer = self._layer_index('water_layer', self._setting('water_layer', settings.get('water_layer'), None))
+        water = self._setting('water_layer', settings.get('water_layer'), None)
+        if(water is not None and not str(water).strip().lstrip('-').isdigit() and not layer_indices(self.layers, str(water).strip())):
+            #water not drawn in the domain (e.g. a template outside the setup shape): zero thickness below the sticky air
+            self._insert_unit(str(water).strip(), len(self.layers) - 1)
+        self.water_layer = self._layer_index('water_layer', water)
         if(self.water_layer is not None and self.water_layer != len(self.layers) - 2):
             self._fail(f"water_layer '{self.layers[self.water_layer].layer_label}' must be the unit right below the sticky air.")
-        magmatic_layer = self._layer_index('magmatic_layer', self._setting('magmatic_layer', settings.get('magmatic_layer'), None))
+        magmatic = self._setting('magmatic_layer', settings.get('magmatic_layer'), None)
+        if(magmatic is not None and not str(magmatic).strip().lstrip('-').isdigit() and not layer_indices(self.layers, str(magmatic).strip())):
+            #magmatic layer not drawn in the domain (a template outside the setup shape, e.g. a basalt with the
+            #material of the SVG): zero thickness at the top of the solid layers, where the default basalt goes
+            if(self._insert_unit(str(magmatic).strip(), len(self.layers) - 1 if(self.water_layer is None) else self.water_layer) is not None
+               and self.water_layer is not None):
+                self.water_layer += 1
+        magmatic_layer = self._layer_index('magmatic_layer', magmatic)
         if(magmatic_layer is None and self.magmatism == 'on' and self.magmatism_extraction == 'on'):
             #Basalt layer with zero thickness at the top of the solid layers (below the water, if there is water,
             #otherwise below the sticky air): it can not be drawn in the SVG and receives the melt extracted by Mandyoc
@@ -233,6 +278,14 @@ class SVGScenario(SVGChecks, VerboseExtension):
         #magmatic_layer of param.txt: by default the top of the solid layers (below the water or the sticky air)
         top_solid = len(self.layers) - 2 if(self.water_layer is None) else self.water_layer - 1
         self.magmatic_layer = magmatic_layer if(magmatic_layer is not None) else top_solid
+
+        #layers of sediments deposited by Mandyoc: zero thickness at the top of the solid layers (SP_vc.txt)
+        self.sediment_layers = []
+        if(self.sedimentation):
+            self.sediment_layers = self._insert_sediments(top_solid + 1)
+            if(self.sp_format == 'ggciag' and self.water_layer is not None):
+                self._warn(f"water_layer '{self.layers[self.water_layer].layer_label}': the Mandyoc of ggciag has no water "
+                           f"layer (water_interface is not written).")
 
         #sticky air and lithosphere along x
         #surface: top of the solid layers (base of the sticky air, or of the water); its interface ID is the
@@ -309,6 +362,142 @@ class SVGScenario(SVGChecks, VerboseExtension):
         self.layers.insert(index, basalt)
         return index
 
+    def _insert_unit(self, label, index):
+        '''
+        Insert a layer of zero thickness with the material of the unit labelled label (drawn in the domain or as a
+        template outside it, see reader.unit_layer) at index of the stack (below the layer at index); return it,
+        or None if the SVG has no unit with that label.
+        '''
+        layer = unit_layer(self.svg_file, label, self.Nx)
+        if(layer is None):
+            return None
+        layer.interface = np.copy(self.layers[index].interface) #base = base of the layer above it
+        layer.base_depth = layer.interface.max()
+        self.layers.insert(index, layer)
+        return layer
+
+    def _insert_sediments(self, index):
+        '''
+        Insert one layer of zero thickness of sediment_layer for each time of sediment_times at index of the stack
+        (the top of the solid layers, below the water or the sticky air); return their indices (bottom to top).
+        '''
+        for _ in self.sediment_times:
+            if(self._insert_unit(self.sediment_layer, index) is None):
+                self._fail(f"sediment_layer = {self.sediment_layer}: no unit labelled '{self.sediment_layer}' in "
+                           f"{self.svg_file}. Draw a shape with its description (outside the setup shape, if the "
+                           f"sediments are not in the initial scenario).")
+        if(self.water_layer is not None):
+            self.water_layer += len(self.sediment_times)
+        return list(range(index, index + len(self.sediment_times)))
+
+    def sedimentation_schedule(self):
+        '''
+        [(time [Myr], ID of the active layer of sediments, sedimentation rate)] at each time at which the active layer
+        or the rate changes: the layers start at sediment_times and the rate changes at the times of
+        sedimentation_rates. When tf_sed is before time_max, the last line (at tf_sed, rate 0) stops the
+        sedimentation. Empty without sedimentation.
+        '''
+        if(not self.sedimentation):
+            return []
+        changes = [t for t, _ in self.sedimentation_rates if self.ti_sed < t < self.tf_sed]
+        schedule = []
+        for t in sorted(set(self.sediment_times) | set(changes)):
+            k = max(k for k, ts in enumerate(self.sediment_times) if ts <= t + 1.0e-9) #active layer
+            schedule.append((t, self.sediment_layers[k], self.rate_at(t)))
+        if(self.tf_sed < self.time_max / 1.0e6 - 1.0e-9):
+            schedule.append((self.tf_sed, self.sediment_layers[-1], 0.0))
+        return schedule
+
+    def time_conditions(self):
+        '''
+        Files of conditions that change in time (tapioca.inputs.GenericTimeConditions), set in the builder and written
+        by write_all: scale_bcv.txt (accordion) and the files of the surface processes in the format of sp_format:
+          - SP_vc: SP_vc.txt (each change of sedimentation_schedule: ID of the active layer, rate and Ld) and
+            base_level.txt without header;
+          - ggciag: sediment_layers.txt (the time and the ID of each layer; the header has the initial active layer),
+            sedimentation_rate.txt (each change of the rate; only when sp_mode deposits sediments, Mandyoc starts with
+            rate 0) and base_level.txt, each with the number of lines first.
+        '''
+        conditions = []
+        if(self.variable_bcv):
+            conditions.append(GenericTimeConditions('scale_bcv', self._bcv_changes()))
+        if(self.sedimentation and self.sp_format == 'SP_vc'):
+            conditions.append(GenericTimeConditions('SP_vc', [(t, (i, rate, self.Ld))
+                                                              for t, i, rate in self.sedimentation_schedule()]))
+        if(self.sedimentation and self.sp_format == 'ggciag'):
+            conditions.append(GenericTimeConditions('sediment_layers', list(zip(self.sediment_times, self.sediment_layers))))
+            if(self.sp_mode in SEDIMENTATION_MODES):
+                rates = []
+                for t, _, rate in self.sedimentation_schedule():
+                    if(not rates or rates[-1][1] != rate):
+                        rates.append((t, rate))
+                conditions.append(GenericTimeConditions('sedimentation_rate', rates))
+        if(self.base_level is not None):
+            conditions.append(GenericTimeConditions('base_level', [(0.0, self.base_level), (self.time_max/1.0e6, self.base_level)],
+                                                    header='count' if(self.sp_format == 'ggciag') else None))
+        return conditions
+
+    def _time_condition_text(self, param):
+        '''Content of the file of the time condition param, or None if the scenario does not have it.'''
+        return next((c.text() for c in self.time_conditions() if c.param == param), None)
+
+    def sp_vc(self):
+        '''Content of SP_vc.txt (sp_format = SP_vc; None without sedimentation), see time_conditions.'''
+        return self._time_condition_text('SP_vc')
+
+    def sediment_layers_file(self):
+        '''Content of sediment_layers.txt (sp_format = ggciag; None without sedimentation), see time_conditions.'''
+        return self._time_condition_text('sediment_layers')
+
+    def sedimentation_rate_file(self):
+        '''Content of sedimentation_rate.txt (sp_format = ggciag, sp_mode in SEDIMENTATION_MODES), see time_conditions.'''
+        return self._time_condition_text('sedimentation_rate')
+
+    def base_level_file(self):
+        '''Content of base_level.txt (None without base_level), see time_conditions.'''
+        return self._time_condition_text('base_level')
+
+    def sp_files(self):
+        '''Files of the surface processes ({file name: content}) written by write_all, in the format of sp_format.'''
+        return {c.fname: c.text() for c in self.time_conditions() if c.param != 'scale_bcv'}
+
+    def rate_at(self, t):
+        '''Sedimentation rate at time t [Myr] (sedimentation_rates is constant in steps).'''
+        return [rate for ts, rate in self.sedimentation_rates if ts <= t + 1.0e-9][-1]
+
+    def _parse_rates(self, value):
+        '''
+        sedimentation_rate as [(time [Myr], rate)], sorted by time: a number (constant rate from ti_sed), a text
+        "t1: rate1, t2: rate2, ..." (times in Myr or with units, e.g. "0 Myr: 25, 20 Myr: 50") or a list of (time, rate)
+        or a dict {time: rate} (times in Myr).
+        '''
+        where = f"Setting of {self.svg_file}"
+        if(isinstance(value, dict)):
+            pairs = list(value.items())
+        elif(isinstance(value, (list, tuple))):
+            pairs = list(value)
+        elif(isinstance(value, str) and ':' in value):
+            pairs = []
+            for item in value.split(','):
+                if(':' not in item):
+                    self._fail(f"sedimentation_rate: write each step as time: rate (found '{item.strip()}').")
+                t, rate = item.split(':', 1)
+                pairs.append((parse_quantity(t.strip(), 'time', where, 'sedimentation_rate', default_unit='Myr') * 1.0e-6, rate))
+        else:
+            pairs = [(self.ti_sed, value)]
+        if(any(not isinstance(pair, (list, tuple)) or len(pair) != 2 for pair in pairs)):
+            self._fail(f"sedimentation_rate: give a number or pairs of time and rate (found {value!r}).")
+        rates = sorted((self._check_number('time of sedimentation_rate', t, 0),
+                        self._check_number('sedimentation_rate', rate, 0)) for t, rate in pairs)
+        if(not rates):
+            self._fail("sedimentation_rate: no rate given.")
+        if(len({t for t, _ in rates}) < len(rates)):
+            self._fail("sedimentation_rate: two rates at the same time.")
+        if(rates[0][0] > self.ti_sed + 1.0e-9):
+            self._fail(f"sedimentation_rate: the first rate starts at {rates[0][0]:g} Myr, after ti_sed = {self.ti_sed:g} Myr; "
+                       f"give the rate at ti_sed.")
+        return rates
+
     def _read_settings(self, settings):
         where = f"Setting of {self.svg_file}"
         def setting(name, default, quantity=None, unit=None, scale=1.0):
@@ -383,6 +572,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         else: #rifting and compression
             self.time_max = 60.0e6
 
+        self._read_surface_processes(settings, setting)
+
         self._print_verbose(f"Numerical experiment: {self.regime} ({self.source['regime']}), velocity = {self.velocity:g} cm/yr "
                     f"({self.source['velocity']}), moving boundary: {self.moving_boundary} ({self.source['moving_boundary']})")
         self._print_verbose(f"Magmatism: {self.magmatism} ({self.source['magmatism']}), extraction: {self.magmatism_extraction} "
@@ -394,6 +585,79 @@ class SVGScenario(SVGChecks, VerboseExtension):
                         f"({self.source['preset_initial_temperature']})")
         if(self.custom_veloc_field is not None):
             self._print_verbose(f"Velocity field from {self.custom_veloc_field} ({self.source['custom_veloc_field']})")
+
+    def _rates_text(self):
+        '''sedimentation_rates as text: the rate, or "t1 Myr: rate1, t2 Myr: rate2, ..." when it changes.'''
+        if(len(self.sedimentation_rates) == 1):
+            return f"{self.sedimentation_rates[0][1]:g}"
+        return ', '.join(f"{t:g} Myr: {rate:g}" for t, rate in self.sedimentation_rates)
+
+    def _check_bool(self, name, value):
+        '''True or False (also on/off, yes/no).'''
+        if(isinstance(value, (bool, np.bool_))):
+            return bool(value)
+        key = str(value).strip().lower()
+        if(key in ('true', 'on', 'yes')):
+            return True
+        if(key in ('false', 'off', 'no')):
+            return False
+        self._fail(f"{name} must be True or False (found '{value}').")
+
+    def _read_surface_processes(self, settings, setting):
+        '''
+        Settings of the surface processes (after time_max): sp_surface_processes and sp_mode of param.txt, the
+        layers of sediments (sediment_layer, ti_sed, tf_sed, dt_sed, sedimentation_rate and Ld, see sp_vc), the base
+        level (base_level) and the parameters of SP_PARAMS, which are written to param.txt as given.
+        '''
+        self.sp_surface_processes = self._check_bool('sp_surface_processes', setting('sp_surface_processes', False))
+        self.sp_mode = self._check_choice('sp_mode', setting('sp_mode', 'none'), SP_MODES)
+        if(self.sp_surface_processes and self.sp_mode == 'none'):
+            self._fail(f"sp_surface_processes = True needs sp_mode ({', '.join(SP_MODES[1:])}).")
+        if(not self.sp_surface_processes and self.sp_mode != 'none'):
+            self._warn(f"sp_mode = {self.sp_mode} is not used with sp_surface_processes = False.")
+        #format of the files of the surface processes (default ggciag): SP_vc (SP_vc.txt, the Mandyoc of the sedimentation of
+        #Theunissen, mandyoc_tests) or ggciag (sediment_layers.txt and sedimentation_rate.txt, the Mandyoc of ggciag)
+        self.sp_format = self._check_choice('sp_format', setting('sp_format', 'ggciag'), SP_FORMATS)
+        #layers of sediments: the modes that deposit sediments; with ggciag, every mode (Mandyoc reads
+        #sediment_layers.txt whenever sp_surface_processes is True)
+        self.sedimentation = self.sp_surface_processes and (self.sp_mode in SEDIMENTATION_MODES or self.sp_format == 'ggciag')
+
+        sed_keys = ('sediment_layer', 'ti_sed', 'tf_sed', 'dt_sed', 'sedimentation_rate', 'Ld')
+        self.sediment_layer = setting('sediment_layer', None)
+        ti = self._check_number('ti_sed', setting('ti_sed', 0.0, 'time', 'Myr', 1.0e-6), 0) #Myr
+        tf = setting('tf_sed', None, 'time', 'Myr', 1.0e-6)
+        tf = self.time_max / 1.0e6 if(tf is None) else self._check_number('tf_sed', tf, ti, strict=True) #Myr
+        dt = self._check_number('dt_sed', setting('dt_sed', 1.0, 'time', 'Myr', 1.0e-6), 0, strict=True) #Myr
+        self.ti_sed, self.tf_sed, self.dt_sed = ti, tf, dt
+        self.sedimentation_rates = self._parse_rates(setting('sedimentation_rate', 25.0)) #[(Myr, rate)]
+        self.sedimentation_rate = self.rate_at(ti) #rate at ti_sed
+        self.Ld = self._check_number('Ld', setting('Ld', 35.0e3, 'length', 'm'), 0, strict=True) #m
+        base_level = setting('base_level', None, 'length', 'm')
+        self.base_level = None if(base_level is None) else self._check_number('base_level', base_level) #m
+        self.sp_params = {name: value for name in SP_PARAMS if (value := setting(name, None)) is not None}
+
+        self.sediment_times = []
+        if(self.sedimentation):
+            if(self.sediment_layer is None):
+                self._fail(f"sp_mode = {self.sp_mode} deposits layers of sediments: give sediment_layer, the label of "
+                           f"the unit of the sediments (a shape that may be drawn outside the setup shape).")
+            self.sediment_layer = str(self.sediment_layer).strip()
+            if(tf > self.time_max / 1.0e6 + 1.0e-9):
+                self._warn(f"tf_sed = {tf:g} Myr is after time_max = {self.time_max/1.0e6:g} Myr.")
+            n = int(np.floor((tf - ti) / dt + 1.0e-9))
+            if(n < 1):
+                self._fail(f"No layer of sediments between ti_sed = {ti:g} and tf_sed = {tf:g} Myr with dt_sed = {dt:g} Myr.")
+            self.sediment_times = [ti + k * dt for k in range(n)]
+            if(self.sp_format == 'ggciag' and not np.isclose(self.Ld, 35.0e3)):
+                self._warn(f"Ld = {self.Ld/1.0e3:g} km is not used: the Mandyoc of ggciag has Ld = 35 km in its code.")
+            self._print_verbose(f"Sedimentation ({self.sp_mode}): {n} layers of {self.sediment_layer}, one every "
+                                f"{dt:g} Myr from {ti:g} to {tf:g} Myr; sedimentation_rate = {self._rates_text()}, "
+                                f"Ld = {self.Ld/1.0e3:g} km")
+        else:
+            unused = [key for key in sed_keys if self.source[key] != 'default']
+            if(unused):
+                self._warn(f"{', '.join(unused)} not used: the layers of sediments need sp_surface_processes = True "
+                           f"and sp_mode in {', '.join(SEDIMENTATION_MODES)}.")
 
     ###########################################################################
     # Lithosphere-asthenosphere boundary
@@ -598,12 +862,15 @@ class SVGScenario(SVGChecks, VerboseExtension):
         '''Content of scale_bcv.txt in the accordion regime (Mandyoc multiplies the boundary velocity by each factor at the given time).'''
         if(not self.variable_bcv):
             return None
+        return self._time_condition_text('scale_bcv')
+
+    def _bcv_changes(self):
+        '''[(time [Myr], factor)] of scale_bcv.txt in the accordion regime.'''
         if(self.dt_quiescence > 0):
-            changes = [(self.ti_convergence, -1.0), (self.ti_quiescence, 0.01), (self.tf_quiescence, -100.0),
-                       (self.time_max/1.0e6, 0.01)]
-        else: #no quiescence: convergence followed directly by extension
-            changes = [(self.ti_convergence, -1.0), (self.ti_quiescence, -1.0), (self.time_max/1.0e6, 0.01)]
-        return f"{len(changes)}\n" + "".join(f"{t} {factor}\n" for t, factor in changes)
+            return [(self.ti_convergence, -1.0), (self.ti_quiescence, 0.01), (self.tf_quiescence, -100.0),
+                    (self.time_max/1.0e6, 0.01)]
+        #no quiescence: convergence followed directly by extension
+        return [(self.ti_convergence, -1.0), (self.ti_quiescence, -1.0), (self.time_max/1.0e6, 0.01)]
 
     def parameters(self, **params):
         '''
@@ -616,7 +883,16 @@ class SVGScenario(SVGChecks, VerboseExtension):
         unknown = [key for key in params if key not in PARAMS_TYPES]
         if(unknown):
             raise SVGInputError(f"Unknown parameter(s) of param.txt: {', '.join(sorted(unknown))}")
+        sp = {'sp_surface_processes': self.sp_surface_processes}
+        if(self.sp_mode != 'none'):
+            sp['sp_mode'] = self.sp_mode
+        if(self.base_level is not None):
+            sp['variable_base_level'] = True
+        if(self.sedimentation and self.water_layer is not None and self.sp_format == 'SP_vc'):
+            sp['water_interface'] = self.water_layer
         return {**DEFAULT_PARAMS,
+                **sp,
+                **self.sp_params,
                 'time_max': self.time_max,
                 'variable_bcv': self.variable_bcv,
                 'velocity_from_ascii': self.velocity_from_ascii,
@@ -775,7 +1051,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
                   mandyoc_options='', post_processing=True, zip_inputs=True, job_name=None, mail_user=None, **params):
         '''
         Write the input files of Mandyoc in output_dir: interfaces.txt, param.txt, input_temperature_0.txt,
-        input_velocity_0.txt, vel_bc.txt, velz_bc.txt and scale_bcv.txt (accordion), the scenario infos
+        input_velocity_0.txt, vel_bc.txt, velz_bc.txt and scale_bcv.txt (accordion), SP_vc.txt (sedimentation) and
+        base_level.txt (base_level), the scenario infos
         (infos_<folder>.txt), a copy of the SVG and the figures numerical_setup.png and initial_temperature.png.
         With scripts, also the run script of Mandyoc for system ('linux', 'mac' or 'hypatia'), with the post-processing
         if post_processing, 0_organize_outputs.sh and zipper.sh (see write_scripts).
@@ -819,9 +1096,12 @@ class SVGScenario(SVGChecks, VerboseExtension):
             np.savetxt(path("vel_bc.txt"), np.array([v0, vf]).T)
             np.savetxt(path("velz_bc.txt"), self.VZ[(self.z == 0)].T)
             builder.export_field('velocity', header="v1\nv2\nv3\nv4")
-            if(self.variable_bcv):
-                with open(path("scale_bcv.txt"), "w") as f:
-                    f.write(self.scale_bcv())
+
+        #files of conditions that change in time (scale_bcv.txt, files of the surface processes), written by the
+        #builder with the others set in it by script (builder.set_time_conditions)
+        for c in self.time_conditions():
+            builder.set_time_conditions(c.param, c)
+        builder.export_time_conditions()
 
         if(scripts):
             self.write_scripts(output_dir, system=system, ncores=ncores, mandyoc_options=mandyoc_options,
@@ -843,7 +1123,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
 
     #files written by write_all (those that exist are zipped by zip_inputs)
     INPUT_FILES = ['interfaces.txt', 'param.txt', 'input_temperature_0.txt', 'input_velocity_0.txt', 'vel_bc.txt',
-                   'velz_bc.txt', 'scale_bcv.txt', 'numerical_setup.png', 'initial_temperature.png',
+                   'velz_bc.txt', 'scale_bcv.txt', 'SP_vc.txt', 'sediment_layers.txt', 'sedimentation_rate.txt',
+                   'base_level.txt', 'numerical_setup.png', 'initial_temperature.png',
                    'run_linux.sh', 'run_mac.sh', 'run_hypatia.sh', '0_organize_outputs.sh', 'zipper.sh']
 
     def zip_inputs(self, output_dir='.'):
@@ -854,7 +1135,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         '''
         name = os.path.basename(os.path.abspath(output_dir))
         target = os.path.join(output_dir, f'inputs_{name}.zip')
-        files = self.INPUT_FILES + [f'infos_{name}.txt', os.path.basename(self.svg_file)]
+        files = (self.INPUT_FILES + list(getattr(self.builder, 'time_conditions', {}))
+                 + [f'infos_{name}.txt', os.path.basename(self.svg_file)])
         if(self.custom_veloc_field is not None):
             files.append(os.path.basename(self.custom_veloc_field))
         files = [fname for fname in dict.fromkeys(files) if os.path.isfile(os.path.join(output_dir, fname))]
@@ -887,7 +1169,14 @@ class SVGScenario(SVGChecks, VerboseExtension):
                       f"Time of quiescence: {self.dt_quiescence} Myr ({self.ti_quiescence} - {self.tf_quiescence} Myr)",
                       f"Second extension: {self.dt_rifting2} Myr ({self.tf_quiescence} - {self.time_max/1.0e6} Myr)", ' ']
         lines.append(f'Layers (bottom to top) from {self.svg_file}, thickness at x = {self.x_profile/1.0e3:.0f} km:')
+        sediments = set(self.sediment_layers)
         for i, layer in enumerate(layers):
+            if(i in sediments):
+                if(i == self.sediment_layers[0]):
+                    lines.append(f"\t{i}-{self.sediment_layers[-1]}: {layer.layer_label} ({layer.rheology_name}): "
+                                 f"{len(sediments)} layers of zero thickness deposited by Mandyoc (SP_vc.txt), "
+                                 f"C = {layer.params['C']}, rho = {layer.params['rho']} kg/m3, H = {layer.params['H']:.4g} W/kg")
+                continue
             lines.append(f"\t{i}: {layer.layer_label} ({layer.rheology_name}): h = {slot_thickness(layers, i, ix)/1.0e3:.1f} km, "
                          f"C = {layer.params['C']}, rho = {layer.params['rho']} kg/m3, H = {layer.params['H']:.4g} W/kg")
         lines.append(f"\tlithosphere: {self.thickness_litho[ix]/1.0e3:.1f} km")
@@ -917,6 +1206,18 @@ class SVGScenario(SVGChecks, VerboseExtension):
                   f"\tThermal expansion coefficient: {self.thermal_expansion_coefficient:g} 1/K",
                   f"\tGravity: {self.gravity_acceleration:g} m/s2"]
         lines += [' ', f'magmatism: {self.magmatism}, extraction: {self.magmatism_extraction}, Ts0: {self.magmatism_Ts0:g} oC']
+        lines.append(f"Surface processes: {self.sp_surface_processes}, sp_mode: {self.sp_mode}"
+                     + (f", files: {', '.join(self.sp_files())} (sp_format = {self.sp_format})" if(self.sp_files()) else ""))
+        if(self.sedimentation):
+            lines += [f"\tsediments: {len(self.sediment_layers)} layers of {self.sediment_layer} (IDs {self.sediment_layers[0]}-"
+                      f"{self.sediment_layers[-1]}), one every {self.dt_sed:g} Myr from {self.ti_sed:g} to {self.tf_sed:g} Myr",
+                      f"\tsedimentation_rate: {self._rates_text()}, Ld: {self.Ld/1.0e3:g} km"]
+        if(self.water_layer is not None):
+            lines.append(f"\twater layer: {self.water_layer} ({layers[self.water_layer].layer_label})")
+        if(self.base_level is not None):
+            lines.append(f"\tbase level: {self.base_level:g} m (base_level.txt)")
+        if(self.sp_params):
+            lines.append("\tparam.txt: " + ', '.join(f"{k} = {v}" for k, v in self.sp_params.items()))
         lines.append('Settings (argument, SVG or default): ' + ', '.join(f"{k}: {v}" for k, v in self.source.items()))
         return lines
 

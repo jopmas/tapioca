@@ -68,6 +68,15 @@ magmatism_Ts0 (e.g. 1080, in oC), heat_capacity (e.g. 1250, in J/kg/K), thermal_
 (e.g. 3.28e-5, in 1/K), gravity_acceleration (e.g. 10, in m/s2) and preset_initial_temperature (folder or .nc
 file of a preliminary scenario whose final thermal state is used as initial temperature) and custom_veloc_field
 (Python script that builds the velocity field instead of the kinematic regime, see SVGScenario.build_velocity).
+The surface processes are also settings of the experiment: sp_surface_processes (True or False), sp_mode (e.g.
+theunissen_sedimentation), the layers of sediments deposited by Mandyoc (sediment_layer, ti_sed, tf_sed, dt_sed,
+sedimentation_rate, Ld and base_level, written to SP_vc.txt and base_level.txt, or with sp_format = ggciag to
+sediment_layers.txt, sedimentation_rate.txt and base_level.txt) and the parameters of param.txt in
+SP_PARAMS (sp_d_c, strain_sed, continental_slope, ...); see SVGScenario.
+
+Units that are not drawn in the domain: a shape with description drawn outside the setup shape is a template, whose
+material is used by SVGScenario for layers of zero thickness (the sediments of sediment_layer, or the water of
+water_layer), so the many layers of sediments of a scenario are a single shape (see unit_layer).
 
 Without a setup shape the SVG page is the domain and Lx, Lz, Nx must be given.
 x and z are scaled independently, so the drawing may be vertically
@@ -125,8 +134,9 @@ from ..._aux_functions import split_unit
 from ..generic_input_classes import MandyocBuilder
 from ..checks import SVGInputError, SVGChecks
 from .materials import MandyocLayer, get_rheology
+from ._variables import SP_PARAMS
 
-__all__ = ["SVGInputError", "SVG_VERSION", "INKSCAPE_VERSION", "svg_versions", "read_setup", "read_units", "layers_from_svg", "layers_to_builder", "write_interfaces",
+__all__ = ["SVGInputError", "SVG_VERSION", "INKSCAPE_VERSION", "svg_versions", "read_setup", "read_units", "unit_layer", "layers_from_svg", "layers_to_builder", "write_interfaces",
            "layer_indices", "slot_thickness", "layer_thickness",
            "plot_layers", "points_from_spacing", "EXPERIMENT_KEYS", "SETUP_LABEL"]
 
@@ -144,7 +154,10 @@ EXPERIMENT_KEYS = ("regime", "velocity", "moving_boundary", "time_max", "quiesce
                    "magmatism", "magmatism_extraction", "magmatism_Ts0", "preset_initial_temperature",
                    "temperature_solver", "water_layer", "magmatic_layer", "heat_capacity",
                    "thermal_expansion_coefficient", "gravity_acceleration",
-                   "custom_veloc_field")  # settings of the experiment in the domain description
+                   "custom_veloc_field",
+                   # surface processes and sedimentation (see SVGScenario)
+                   "sp_surface_processes", "sp_mode", "sp_format", "sediment_layer", "ti_sed", "tf_sed", "dt_sed",
+                   "sedimentation_rate", "Ld", "base_level") + SP_PARAMS  # settings of the experiment in the domain description
 
 # key in the description -> parameter of interfaces.txt: the keys of DEFAULT_MATERIAL (rho, C, H, ...) and their
 # names in INTERFACES_PARAMETERS (density, scale_factor, radiogenic_heat, ...)
@@ -374,6 +387,26 @@ def read_units(svg_file):
     if None in shape_unit:
         raise SVGInputError("Some shapes with description have no id. Save the file with Inkscape to create them.")
     return shape_unit, units
+
+
+def unit_layer(svg_file, label, Nx):
+    '''
+    MandyocLayer of the unit labelled label (its description, title and the fill of its first shape), without
+    interface, or None if the SVG has no unit with that label. The unit does not need to be inside the domain: a
+    shape drawn outside the setup shape (a template) gives the material of layers that are not drawn, such as the
+    sediments deposited by Mandyoc or a water layer of zero thickness (see SVGScenario).
+    '''
+    shape_unit, units = read_units(svg_file)
+    if label not in units:
+        return None
+    color = "#808080"
+    for el in se.SVG.parse(svg_file, reify=True).elements():
+        if isinstance(el, se.Shape) and shape_unit.get(el.id) == label and el.fill is not None and el.fill.value is not None:
+            color = el.fill.hex[:7]
+            break
+    u = units[label]
+    return MandyocLayer(label, u["rheology"], Nx=Nx, title=u["title"], color=color, reference_thickness=u["thickness"],
+                        **u["props"])
 
 
 def shape_to_mplpath(shape, n_curve=32):

@@ -8,6 +8,43 @@ and `tapioca.inputs.svg` builds a scenario drawn in an SVG file. See
 
 ---
 
+## Time conditions
+
+`GenericTimeConditions` keeps the conditions of Mandyoc that change in time as a table (`pandas.DataFrame`: the
+column `time` [Myr] and one column per value) and writes them as a file of Mandyoc: one line per instant, after an
+optional header with the number of lines (`scale_bcv.txt`, `multi_veloc.txt`, `sedimentation_rate.txt`,
+`sediment_layers.txt`, `base_level.txt`, `SP_vc.txt`, or any other). The conditions may be given as a DataFrame, a
+dict `{time: value}`, a list of `(time, value)` or a dict of columns, and `GenericTimeConditions.read` reads a file of
+Mandyoc back into the table.
+`MandyocBuilder.set_time_conditions` sets a file in the builder and `MandyocBuilder.export_time_conditions` writes
+them. The source code is in `inputs/generic_input_classes.py`.
+
+```{eval-rst}
+.. currentmodule:: tapioca.inputs
+
+.. autosummary::
+   :toctree: ../generated/
+
+   GenericTimeConditions
+   GenericTimeConditions.read
+   MandyocBuilder.set_time_conditions
+   MandyocBuilder.export_time_conditions
+```
+
+Example:
+```python
+builder.set_time_conditions('sedimentation_rate', {0.0: 25.0, 20.0: 50.0})  # time [Myr]: rate [m2/yr]
+builder.set_time_conditions('scale_bcv', {25.0: -1.0, 75.0: 0.01})
+builder.export_time_conditions()  # sedimentation_rate.txt and scale_bcv.txt in builder.path
+
+import pandas as pd
+table = pd.DataFrame({'time': [0.0, 1.0], 'layer': [5, 6], 'rate': [25.0, 25.0], 'Ld': [35.0e3, 35.0e3]})
+builder.set_time_conditions('SP_vc', table)
+GenericTimeConditions.read('scale_bcv', 'scale_bcv.txt').table  # columns time and factor
+```
+
+---
+
 ## Scenario builder
 
 The `SVGScenario` class reads the SVG, builds the layers, the initial temperature and the velocity
@@ -27,6 +64,7 @@ the input files and figures. The source code is in `inputs/svg/scenario.py`.
    SVGScenario.build_velocity
    SVGScenario.parameters
    SVGScenario.scale_bcv
+   SVGScenario.time_conditions
    SVGScenario.infos
    SVGScenario.plot_setup
    SVGScenario.plot_temperature

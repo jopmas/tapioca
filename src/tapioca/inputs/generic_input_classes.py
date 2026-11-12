@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from types import MappingProxyType
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 from xarray import DataTree
 
@@ -17,7 +18,7 @@ from .checks import InputError
 from .._variables import VARS_TYPES, PARAMS_TYPES, VARIABLES_LIST, INTERFACES_PARAMETERS,DEFAULT_MATERIAL,MATERIAL_PARAMETERS,PARAMETERS_UNITS,SEC_PER_YEAR
 from .._aux_functions import read_params, evaluate_params, ensure_directory_exists, build_diagonals_2D, spsolve_heat_col, get_interface, _numba_diffusion_loop, _Druker_Prager_YS, _Byerlee_law_YS, _visc_dislocation_creep
 
-__all__ = ['MandyocBuilder','TemperatureFieldBuilder','VelocityFieldBuilder']
+__all__ = ['MandyocBuilder','TemperatureFieldBuilder','VelocityFieldBuilder','GenericTimeConditions']
 
 class GeometryDomain:
     """Abstract class to handle with the domain and grid discretization."""
@@ -964,6 +965,28 @@ class MandyocBuilder(GeometryDomain,VerboseExtension):
         with open(path, 'w') as f:
             for key, value in self.params.items():
                 f.write(f"{key:<{col}}= {value} \n")
+
+    def set_time_conditions(self, param:str, conditions, **kwargs):
+        '''
+        Set a file of Mandyoc with conditions that change in time (scale_bcv.txt, sedimentation_rate.txt, ...), built
+        by GenericTimeConditions(param, conditions, **kwargs) and written by `export_time_conditions`. A file set
+        again (same file name) is replaced. Return the GenericTimeConditions.
+
+        conditions may be a pandas.DataFrame (column "time" and the values), a dict or a list (see
+        GenericTimeConditions), or a GenericTimeConditions, which is used as it is.
+
+        Example: builder.set_time_conditions('sedimentation_rate', {0.0: 25.0, 20.0: 50.0})
+        '''
+        if not isinstance(conditions, GenericTimeConditions):
+            conditions = GenericTimeConditions(param, conditions, **kwargs)
+        if not hasattr(self, 'time_conditions'):
+            self.time_conditions = {}
+        self.time_conditions[conditions.fname] = conditions
+        return conditions
+
+    def export_time_conditions(self):
+        '''Write the files of the time conditions set via `set_time_conditions` in the folder of the scenario.'''
+        return [conditions.write(self.path) for conditions in getattr(self, 'time_conditions', {}).values()]
             
     
     def plot_interfaces(self, fig:plt.Figure, axes:plt.Axes, mode:str='fill'):
@@ -1922,3 +1945,165 @@ class TemperatureFieldBuilder:
         self.temperature.values = T_flat.reshape((self.Nz, self.Nx))
 
         return self
+
+
+class GenericTimeConditions:
+    '''
+    Conditions of Mandyoc that change in time, stored as a table (pandas.DataFrame): the column "time" [Myr] and one
+    column per value of that time (e.g. sedimentation_rate.txt: time and rate; SP_vc.txt: time, layer, rate and Ld),
+    one row per instant, sorted by time. The table is written as a file of Mandyoc (one line per row, after an optional
+    header with the number of lines) and can be read back from one (GenericTimeConditions.read).
+
+    The conditions may be given in any of these forms, all converted to the table:
+      - a pandas.DataFrame with the column "time" (or the time as its index) and the columns of the values;
+      - a dict {time: value} or a list [(time, value), ...], where a value is a number, a tuple with the values of
+        the line (e.g. SP_vc: (layer, rate, Ld)) or None for a line with only the time (multi_veloc);
+      - a dict of columns {"time": [...], "rate": [...]}.
+
+    Parameters
+    ----------
+    param : str
+        Name of the condition. For the files of FILES (scale_bcv, multi_veloc, sedimentation_rate, sediment_layers,
+        base_level, SP_vc), the file name, the names of the columns, the header and the format of the columns are
+        known; any other name writes <param>.txt with a 'count' header, unless fname, header and formats are given.
+    conditions : pandas.DataFrame, dict or list
+        The conditions (see above).
+    fname : str, optional
+        Name of the file. Default: the one of FILES, or <param>.txt.
+    columns : list of str, optional
+        Names of the columns of the values (without "time"). Default: the ones of FILES, the ones of a DataFrame, or
+        value_1, value_2, ...
+    header : str, callable or None, optional
+        First line: 'count' (number of lines), 'count_first' (number of lines and the first value of the first line,
+        e.g. the initial active layer of sediment_layers.txt), None (no header) or a function of the table that
+        returns it. Default: the one of FILES, or 'count'.
+    formats : tuple of str, optional
+        Format of each column (time first), e.g. ('{:.2f}', '{:g}'). Default: the one of FILES, or '{}' for each.
+
+    Attributes
+    ----------
+    table : pandas.DataFrame
+        The conditions: the column "time" [Myr] and the columns of the values.
+    '''
+
+    FILES = {
+        'scale_bcv': dict(fname='scale_bcv.txt', columns=['factor'], header='count', formats=('{}', '{}')),
+        'multi_veloc': dict(fname='multi_veloc.txt', columns=[], header='count', formats=('{}',)),
+        'sedimentation_rate': dict(fname='sedimentation_rate.txt', columns=['rate'], header='count',
+                                   formats=('{:.2f}', '{:g}')),
+        'sediment_layers': dict(fname='sediment_layers.txt', columns=['layer'], header='count_first',
+                                formats=('{:.2f}', '{:d}')),
+        'base_level': dict(fname='base_level.txt', columns=['level'], header='count', formats=('{:.2f}', '{:g}')),
+        'SP_vc': dict(fname='SP_vc.txt', columns=['layer', 'rate', 'Ld'], header=None,
+                      formats=('{:.2f}', '{:d}', '{:.2f}', '{:.1f}')),
+    }
+
+    _DEFAULT = object()
+
+    def __init__(self, param:str, conditions, fname:str=None, columns:list=None, header=_DEFAULT, formats:tuple=None):
+        spec = self.FILES.get(param, {})
+        self.param = param
+        self.fname = fname or spec.get('fname', f"{param}.txt")
+        self.header = spec.get('header', 'count') if header is self._DEFAULT else header
+        if self.header not in (None, 'count', 'count_first') and not callable(self.header):
+            raise InputError(f"{param}: header must be 'count', 'count_first', None or a function (found {self.header!r}).")
+        self.table = self._to_table(conditions, columns if columns is not None else spec.get('columns'))
+        ncols = len(self.table.columns)
+        self.formats = tuple(formats or spec.get('formats') or ('{}',) * ncols)
+        if len(self.formats) != ncols:
+            raise InputError(f"{param}: {len(self.formats)} formats for {ncols} columns (the time and {ncols - 1} values).")
+
+    def _to_table(self, conditions, columns):
+        '''The conditions as the table: column "time" first, then the values, sorted by time (stable).'''
+        param = self.param
+        if isinstance(conditions, pd.DataFrame):
+            table = conditions.copy()
+            if 'time' not in table.columns:
+                if table.index.name != 'time':
+                    raise InputError(f"{param}: the DataFrame needs a column (or the index) named 'time'.")
+                table = table.reset_index()
+            values = [c for c in table.columns if c != 'time']
+            if columns is not None and set(columns) == set(values):
+                values = list(columns)  #known columns, in the order of the file
+            elif columns is not None and len(columns) == len(values) and not set(values) & set(columns):
+                table = table.rename(columns=dict(zip(values, columns)))
+                values = list(columns)
+            table = table[['time'] + values]
+        elif isinstance(conditions, dict) and 'time' in conditions:
+            table = pd.DataFrame(conditions)
+            return self._to_table(table, columns)
+        else:
+            items = list(conditions.items()) if isinstance(conditions, dict) else list(conditions)
+            rows = []
+            for item in items:
+                try:
+                    time, value = item
+                except (TypeError, ValueError):
+                    raise InputError(f"{param}: give the conditions as {{time: value}}, [(time, value), ...] or a "
+                                     f"DataFrame (found {item!r}).")
+                values = () if value is None else tuple(value) if isinstance(value, (tuple, list, np.ndarray)) else (value,)
+                rows.append((time, values))
+            ncols = {len(values) for _, values in rows}
+            if len(ncols) > 1:
+                raise InputError(f"{param}: every time must have the same number of values (found {sorted(ncols)}).")
+            n = ncols.pop() if ncols else (len(columns) if columns is not None else 0)
+            if columns is None or len(columns) != n:
+                if columns is not None:
+                    raise InputError(f"{param}: {n} values per time, but the columns are {', '.join(columns) or 'none'}.")
+                columns = [f"value_{k+1}" for k in range(n)]
+            table = pd.DataFrame([[time, *values] for time, values in rows], columns=['time'] + list(columns))
+        if table.empty:
+            raise InputError(f"{param}: no time condition given.")
+        table['time'] = table['time'].astype(float)
+        return table.sort_values('time', kind='stable').reset_index(drop=True)
+
+    @classmethod
+    def read(cls, param:str, path:str, **kwargs):
+        '''
+        GenericTimeConditions from a file of Mandyoc (e.g. read('scale_bcv', 'scale_bcv.txt')): the header (if the
+        format of param has one) is skipped, and the columns whose format is an integer ('{:d}') are read as integers.
+        kwargs as in GenericTimeConditions (fname defaults to the name of the file read).
+        '''
+        spec = cls.FILES.get(param, {})
+        header = kwargs.get('header', spec.get('header', 'count'))
+        with open(path) as f:
+            rows = [line.split() for line in f.read().splitlines() if line.strip()]
+        if header is not None:
+            rows = rows[1:]
+        formats = kwargs.get('formats') or spec.get('formats')
+        def number(value, k):
+            return int(float(value)) if formats is not None and k < len(formats) and formats[k] == '{:d}' else float(value)
+        conditions = [(float(row[0]), tuple(number(v, k + 1) for k, v in enumerate(row[1:]))) for row in rows]
+        kwargs.setdefault('fname', os.path.basename(path))
+        return cls(param, conditions, **kwargs)
+
+    @property
+    def lines(self):
+        '''Rows of the table as [(time, (values))].'''
+        columns = [self.table[c].tolist() for c in self.table.columns]
+        return [(row[0], tuple(row[1:])) for row in zip(*columns)]
+
+    def _header(self):
+        if self.header is None:
+            return None
+        if self.header == 'count':
+            return f"{len(self.table)}"
+        if self.header == 'count_first':
+            return f"{len(self.table)} {self.lines[0][1][0]}"
+        return self.header(self.table)
+
+    def text(self) -> str:
+        '''Content of the file.'''
+        rows = [" ".join(fmt.format(v) for fmt, v in zip(self.formats, (time,) + values)) for time, values in self.lines]
+        header = self._header()
+        return "".join(f"{row}\n" for row in ([header] if header is not None else []) + rows)
+
+    def write(self, path:str='.') -> str:
+        '''Write the file in the folder path; return its path.'''
+        fname = os.path.join(path, self.fname)
+        with open(fname, 'w') as f:
+            f.write(self.text())
+        return fname
+
+    def __repr__(self):
+        return f"GenericTimeConditions({self.param!r}, file {self.fname})\n{self.table}"

@@ -13,7 +13,7 @@ from pathlib import Path
 from ._variables import SEC_PER_YEAR, VARIABLES_LIST, INTERFACES_PARAMETERS,PARAMS_TYPES,UNITS
 
 __all__ = ["read_params","evaluate_params","read_data","read_interfaces","split_unit","convert_units",
-           "find_nearest","most_common","read_preset_temperature","adapt_preset_temperature","ensure_directory_exists","export_compressed_dataset","export_compressed_datatree",
+           "find_nearest","most_common","read_preset_temperature","adapt_preset_temperature","read_preset_temperature_field","interpolate_preset_temperature_field","ensure_directory_exists","export_compressed_dataset","export_compressed_datatree",
            "_numba_diffusion_loop",
            "spsolve_heat_col","build_diagonals_2D",
            "_Druker_Prager_YS","_Byerlee_law_YS","_visc_dislocation_creep"]
@@ -333,6 +333,81 @@ def adapt_preset_temperature(depth_ref, T_ref, sa_ref, litho_ref, z, thickness_s
     T = T_unique[:, idx_columns.ravel()]
     T[T <= 1.0e-7] = 0.0 #dealing with <=0 values inherited from interpolation
     return T
+
+## NOTE (Claude): new functions for scenarios that start from the final state of a preliminary scenario (the SVG made
+## by tapioca-svg-from-state has its geometry), whose initial temperature is the 2D field of that state, not the
+## horizontal mean of read_preset_temperature
+def read_preset_temperature_field(path, time=None):
+    '''
+    2D temperature field of a preliminary scenario.
+
+    Parameters
+    ----------
+    path: str
+        Folder of the preliminary scenario, with temperature.nc (read with MandyocScen) or with param.txt and the
+        temperature_*.txt of Mandyoc, or a NetCDF file with its temperature (e.g. _output_temperature.nc).
+    time: float
+        Time of the field [Myr], the nearest one of the NetCDF file (default: the last one). Only with NetCDF files.
+
+    Returns
+    -------
+    temperature: xr.DataArray (z, x) [oC], z from -Lz to 0 [m] and x from 0 to Lx [m]
+    source: description of the field used
+    '''
+    folder = os.path.dirname(path) if(os.path.isfile(path)) else path
+
+    def select(temperature):
+        return temperature.isel(time=-1) if(time is None) else temperature.sel(time=time, method='nearest')
+
+    fname = path if(os.path.isfile(path)) else os.path.join(folder, 'temperature.nc')
+    if(os.path.isfile(fname)): #NetCDF file with the temperature (only this field is needed: no MandyocScen)
+        with xr.open_dataset(fname) as dataset:
+            temperature = select(dataset.temperature).load()
+        source = f"{fname} (time = {float(temperature.time):g} Myr)"
+    else:
+        if(time is not None):
+            raise ValueError(f"preset time: only with a NetCDF file of the temperature (none in {folder})")
+        if(not os.path.isfile(os.path.join(folder, 'param.txt'))):
+            raise FileNotFoundError(f"preset_initial_temperature: no temperature.nc nor param.txt in {folder}")
+        params = read_params(os.path.join(folder, 'param.txt'))
+        steps = [int(m.group(1)) for m in (re.fullmatch(r'temperature_(\d+)\.txt', os.path.basename(f))
+                 for f in glob.glob(os.path.join(folder, 'temperature_*.txt'))) if m]
+        if(len(steps) == 0):
+            raise FileNotFoundError(f"preset_initial_temperature: no temperature_*.txt in {folder}")
+        fname = os.path.join(folder, f"temperature_{max(steps)}.txt") #final thermal structure
+        temperature = xr.DataArray(read_data(fname, params['nx'], params['nz']), dims=('z', 'x'), #from the bottom to the top
+                                   coords={'z': np.linspace(-params['lz'], 0, params['nz']),
+                                           'x': np.linspace(0, params['lx'], params['nx'])})
+        source = fname
+
+    temperature = temperature.transpose('z', 'x').sortby('z').sortby('x')
+    return temperature.astype(np.float64), source
+
+def interpolate_preset_temperature_field(temperature, x, z, thickness_sa):
+    '''
+    2D temperature field of a preliminary scenario (read_preset_temperature_field) on the nodes of a scenario with
+    the same domain (bilinear interpolation), with 0 oC in the sticky air.
+
+    Parameters
+    ----------
+    temperature: xr.DataArray
+        Temperature (z, x) [oC], z from -Lz to 0 [m]
+    x, z: np.array
+        Coordinates of the nodes [m] (z from -Lz to 0, in any order)
+    thickness_sa: np.array
+        Depth of the surface (base of the sticky air) along x [m]
+
+    Returns
+    -------
+    T: np.array (Nz, Nx) [oC], in the order of z and x
+    '''
+    from scipy.interpolate import RegularGridInterpolator
+    interp = RegularGridInterpolator((temperature.z.values, temperature.x.values), temperature.values,
+                                     bounds_error=False, fill_value=None)
+    Z, X = np.meshgrid(z, x, indexing='ij')
+    T = interp(np.column_stack([Z.ravel(), X.ravel()])).reshape(Z.shape)
+    T[-Z < np.asarray(thickness_sa)[None, :]] = 0.0 #sticky air
+    return np.clip(T, 0.0, None)
 
 def ensure_directory_exists(folder_path: str|Path):
     """

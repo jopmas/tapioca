@@ -194,3 +194,26 @@ flowchart LR
     a lens in the lithospheric mantle), and a lithospheric body inside the asthenosphere stays below the LAB. The
     surface is passed by ID to `TemperatureFieldBuilder`; the LAB is passed as its `z` along `x`.
 *   **Water and magmatic layers:** chosen by the user (label or ID), never guessed from their position.
+
+---
+
+## 4. Scenarios that start from the final state of a simulation
+
+```mermaid
+flowchart LR
+    RUN["Mandyoc scenario<br/>lithology.nc, temperature.nc, interfaces.txt"] -->|"tapioca-svg-from-state"| SVG["SVG of the final state<br/>one path per unit<br/>setup: preset_temperature_mode = field"]
+    SVG -->|"tapioca-svg"| IN["inputs of the new scenario<br/>geometry of the SVG, 2D temperature of the state"]
+    RUN -.->|"temperature.nc"| IN
+```
+
+*   **Geometry:** `from_state.state_to_svg` rasterizes the lithology of the state (last time, or `--time`) on cells
+    of `--cell` km, removes bodies smaller than `--min-area` and writes one path per unit, with the parameters of
+    `interfaces.txt` in its description. The units are labelled from their parameters (`unit_labels`), or with
+    `--labels`. A boundary column made only of air (the last column of the `lithology.nc` of `meshes2netcdf.jl`)
+    takes the column next to it.
+*   **Temperature:** `preset_temperature_mode = field` (setup of the SVG, argument or `--preset-temperature-mode`)
+    makes `build_temperature` interpolate the 2D field of `preset_initial_temperature` (at `preset_time`, or the
+    last time) on the grid, with 0 oC in the sticky air, without the steady-state solver. The domain must be the
+    same as the one of the preliminary scenario. `profile` (the default) keeps the horizontal mean adapted to the
+    lithosphere of each column, for a new scenario drawn on any domain.
+*   **Not kept:** the accumulated strain and the melt of the state.

@@ -5,7 +5,8 @@ Command line interface of the scenario builder:
                 [--moving-boundary right] [--quiescence-time 0] [--time-max 500]
                 [--magmatism off] [--magmatism-extraction off] [--magmatism-Ts0 1080]
                 [--heat-capacity 1250] [--thermal-expansion-coefficient 3.28e-5] [--gravity-acceleration 10]
-                [--preset-initial-temperature path/to/preliminary] [--custom-veloc-field build_veloc.py]
+                [--preset-initial-temperature path/to/preliminary] [--preset-temperature-mode profile]
+                [--preset-time 10] [--custom-veloc-field build_veloc.py]
                 [--sp-surface-processes True] [--sp-mode theunissen_sedimentation] [--sp-format ggciag] [--sediment-layer sediments]
                 [--ti-sed 0] [--tf-sed 70] [--dt-sed 1] [--sedimentation-rate "0 Myr: 25, 20 Myr: 50"] [--Ld 35000] [--base-level -500]
                 [--min-thickness 1] [--no-plots]
@@ -56,6 +57,12 @@ def main(argv=None):
     parser.add_argument('--preset-initial-temperature', help='folder (with temperature.nc) or NetCDF file of a preliminary scenario: the '
                                                              'horizontal mean of its final temperature, adapted to the lithosphere '
                                                              'of the SVG, is the initial temperature (default: from the SVG, or none)')
+    parser.add_argument('--preset-temperature-mode', choices=['profile', 'field'],
+                        help='use of the temperature of --preset-initial-temperature: profile (its horizontal mean, adapted to '
+                             'the lithosphere of the SVG) or field (its 2D field, for a scenario that starts from its final '
+                             'state, e.g. made by tapioca-svg-from-state) (default: from the SVG, or profile)')
+    parser.add_argument('--preset-time', type=float, help='time of the field of --preset-initial-temperature [Myr] with '
+                                                          '--preset-temperature-mode field (default: from the SVG, or the last one)')
     parser.add_argument('--custom-veloc-field', '--custom_veloc_field',
                         help='Python script with build_velocity(scenario) that builds the velocity field instead of the '
                              'kinematic regime (default: from the SVG, or none)')
@@ -105,6 +112,7 @@ def main(argv=None):
                                thermal_expansion_coefficient=args.thermal_expansion_coefficient,
                                gravity_acceleration=args.gravity_acceleration,
                                preset_initial_temperature=args.preset_initial_temperature,
+                               preset_temperature_mode=args.preset_temperature_mode, preset_time=args.preset_time,
                                custom_veloc_field=args.custom_veloc_field,
                                temperature_solver=args.temperature_solver, water_layer=args.water_layer,
                                magmatic_layer=args.magmatic_layer,

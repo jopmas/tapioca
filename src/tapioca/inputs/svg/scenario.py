@@ -21,6 +21,8 @@ experiment:
     thermal_expansion_coefficient = 3.28e-5    (1/K)
     gravity_acceleration = 10                  (m/s2)
     preset_initial_temperature = ../preliminary
+    preset_temperature_mode = profile          (profile or field)
+    preset_time = 10 Myr
     custom_veloc_field = build_veloc.py        (Python script with build_velocity(scenario))
     temperature_solver = 2D                    (2D or columns)
     min_thickness = 1 km
@@ -79,7 +81,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 from ..._variables import SEC_PER_YEAR, PARAMS_TYPES
-from ..._aux_functions import find_nearest, read_preset_temperature, adapt_preset_temperature
+from ..._aux_functions import (find_nearest, read_preset_temperature, adapt_preset_temperature,
+                               read_preset_temperature_field, interpolate_preset_temperature_field)
 from ..generic_input_classes import TemperatureFieldBuilder, VelocityFieldBuilder, VerboseExtension, GenericTimeConditions
 from ..checks import SVGChecks
 from ._variables import (REGIMES, MANTLE_RHEOLOGIES, SYSTEMS, DEFAULT_PARAMS, SP_MODES, SEDIMENTATION_MODES, SP_PARAMS, SP_FORMATS,
@@ -161,6 +164,15 @@ class SVGScenario(SVGChecks, VerboseExtension):
         scenario (see tapioca.read_preset_temperature): the horizontal mean of its final
         temperature, adapted to the lithosphere of the SVG, is the initial temperature. A relative path in the
         SVG is relative to the folder of the SVG. Default: none (conductive model).
+    preset_temperature_mode : str, optional
+        How the temperature of preset_initial_temperature is used: 'profile' (its horizontal mean adapted to the
+        lithosphere of each column, for a new scenario drawn on any domain) or 'field' (its 2D field
+        interpolated on the grid, with 0 oC in the sticky air, for a scenario that starts from the final state
+        of the preliminary scenario, e.g. an SVG made by tapioca-svg-from-state; the domain must be the same).
+        Default: profile.
+    preset_time : float or str, optional
+        Time of the field of preset_initial_temperature [Myr] in the 'field' mode, the nearest one of its
+        NetCDF file. Default: the last one.
     custom_veloc_field : str, optional
         Python script that builds the velocity field instead of the kinematic regime (see build_velocity). A
         relative path in the SVG is relative to the folder of the SVG. Default: none (kinematic regime).
@@ -532,6 +544,17 @@ class SVGScenario(SVGChecks, VerboseExtension):
             base = os.path.dirname(os.path.abspath(self.svg_file)) if(self.source['preset_initial_temperature'] == 'SVG') else None
             preset = self._check_path('preset_initial_temperature', preset, base)
         self.preset_initial_temperature = preset
+        ## NOTE (Claude): the final state of the preliminary scenario may be used as a 2D field (scenario that starts
+        ## from that state) instead of its horizontal mean (profile, the only mode before)
+        self.preset_temperature_mode = self._check_choice('preset_temperature_mode', setting('preset_temperature_mode', 'profile'),
+                                                          ['profile', 'field'])
+        self.preset_time = setting('preset_time', None, 'time', 'Myr', 1.0e-6) #Myr
+        if(self.preset_time is not None):
+            self.preset_time = self._check_number('preset_time', self.preset_time, 0)
+        if(self.preset_initial_temperature is None and self.source['preset_temperature_mode'] != 'default'):
+            self._fail("preset_temperature_mode needs preset_initial_temperature.")
+        if(self.preset_time is not None and self.preset_temperature_mode != 'field'):
+            self._fail("preset_time is used only with preset_temperature_mode = field.")
 
         custom = setting('custom_veloc_field', None)
         if(custom is not None): #a relative path in the SVG is relative to the folder of the SVG
@@ -737,8 +760,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
           mantle adiabat below the LAB (TemperatureFieldBuilder.apply_linear_temperature). temperature_solver
           '2D' (default) solves the whole lithosphere at once (solve_heat_2D), so lateral conduction follows the
           geometry of the layers; 'columns' solves each column alone (solve_heat_1D);
-        - with preset_initial_temperature: the final thermal state of the preliminary scenario adapted to the
-          lithosphere of each column.
+        - with preset_initial_temperature and preset_temperature_mode = profile: the final thermal state of the
+          preliminary scenario (horizontal mean) adapted to the lithosphere of each column;
+        - with preset_initial_temperature and preset_temperature_mode = field: the 2D field of the preliminary
+          scenario (at preset_time, or the last one) interpolated on the grid, with 0 oC in the sticky air. No
+          solver is run: the scenario starts from that thermal state (and from its geometry, drawn in the SVG).
 
         The field is also the temperature of the builder (self.builder.DTree.fields.temperature).
         '''
@@ -753,6 +779,23 @@ class SVGScenario(SVGChecks, VerboseExtension):
                 self.temperature_builder.solve_heat_2D()
             else:
                 self.temperature_builder.solve_heat_1D()
+        ## NOTE (Claude): 2D field of the preliminary scenario as it is (scenario that starts from its final state),
+        ## without the steady-state solver, whose field would be replaced
+        elif(self.preset_temperature_mode == 'field'):
+            try:
+                T_preset, self.preset_source = read_preset_temperature_field(self.preset_initial_temperature, self.preset_time)
+            except (FileNotFoundError, ValueError) as err:
+                raise SVGInputError(f"preset_initial_temperature: {err}")
+            Lx_preset = float(T_preset.x[-1] - T_preset.x[0])
+            Lz_preset = float(T_preset.z[-1] - T_preset.z[0])
+            if(not (np.isclose(Lx_preset, self.Lx) and np.isclose(Lz_preset, self.Lz))):
+                self._fail(f"preset_temperature_mode = field: the domain of the SVG ({self.Lx/1.0e3:g} x {self.Lz/1.0e3:g} km) "
+                           f"differs from the one of the preliminary scenario ({Lx_preset/1.0e3:g} x {Lz_preset/1.0e3:g} km).")
+            tb = self.temperature_builder
+            tb.t_pot = self.TP
+            tb.temperature.values = interpolate_preset_temperature_field(T_preset, tb.temperature.x.values, tb.temperature.z.values,
+                                                                         -tb.surface_interface.values)
+            self._print_verbose(f"Preset of initial temperature (2D field): {self.preset_source}")
         else:
             try:
                 depth, T_preset, sa_preset, litho_preset, self.preset_source = read_preset_temperature(self.preset_initial_temperature)
@@ -1200,6 +1243,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         if(self.preset_initial_temperature is None):
             lines += [f"\tSteady-state conduction in the lithosphere ({self.temperature_solver} solver)",
                       f"\tMantle potential temperature (at the LAB): {self.TP} oC"]
+        elif(self.preset_temperature_mode == 'field' and hasattr(self, 'preset_source')):
+            lines += [f"\tPreliminary scenario: {self.preset_source}, 2D field (preset_temperature_mode = field)"]
         elif(hasattr(self, 'preset_source')):
             lines += [f"\tPreliminary scenario: {self.preset_source}",
                       f"\tReference lithosphere of the preliminary scenario: {self.thickness_litho_preset/1.0e3:.0f} km"]

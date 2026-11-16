@@ -65,8 +65,9 @@ scenario builder (tapioca.inputs.svg.SVGScenario): regime (rifting, compression,
 (e.g. 1 cm/yr), moving_boundary (left, right or symmetric), time_max (e.g. 100 Myr),
 quiescence_time (e.g. 0 Myr), magmatism (on or off), magmatism_extraction (on or off)
 magmatism_Ts0 (e.g. 1080, in oC), heat_capacity (e.g. 1250, in J/kg/K), thermal_expansion_coefficient
-(e.g. 3.28e-5, in 1/K), gravity_acceleration (e.g. 10, in m/s2) and preset_initial_temperature (folder or .nc
-file of a preliminary scenario whose final thermal state is used as initial temperature) and custom_veloc_field
+(e.g. 3.28e-5, in 1/K), gravity_acceleration (e.g. 10, in m/s2), preset_initial_temperature (folder or .nc file of a
+preliminary scenario whose final thermal state is used as initial temperature), preset_temperature_mode
+(profile or field), preset_time (e.g. 10 Myr) and custom_veloc_field
 (Python script that builds the velocity field instead of the kinematic regime, see SVGScenario.build_velocity).
 The surface processes are also settings of the experiment: sp_surface_processes (True or False), sp_mode (e.g.
 theunissen_sedimentation), the layers of sediments deposited by Mandyoc (sediment_layer, ti_sed, tf_sed, dt_sed,
@@ -152,8 +153,8 @@ MIN_THICKNESS = 1.0e3  # default min_thickness [m]: thinner pieces of units draw
 FULL_WIDTH_TOL = 0.02  # shapes whose sides are this close (fraction of Lx) to both sides of the domain are stretched to them (see rasterize)
 EXPERIMENT_KEYS = ("regime", "velocity", "moving_boundary", "time_max", "quiescence_time",
                    "magmatism", "magmatism_extraction", "magmatism_Ts0", "preset_initial_temperature",
-                   "temperature_solver", "water_layer", "magmatic_layer", "heat_capacity",
-                   "thermal_expansion_coefficient", "gravity_acceleration",
+                   "preset_temperature_mode", "preset_time", "temperature_solver", "water_layer", "magmatic_layer",
+                   "heat_capacity", "thermal_expansion_coefficient", "gravity_acceleration",
                    "custom_veloc_field",
                    # surface processes and sedimentation (see SVGScenario)
                    "sp_surface_processes", "sp_mode", "sp_format", "sediment_layer", "ti_sed", "tf_sed", "dt_sed",

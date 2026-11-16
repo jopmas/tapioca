@@ -856,3 +856,19 @@ def test_time_conditions_set_by_script_are_written_and_zipped(tmp_path):
     names = zipfile.ZipFile(tmp_path / f"inputs_{tmp_path.name}.zip").namelist()
     assert "multi_veloc.txt" in names and "sedimentation_rate.txt" in names
     assert [c.param for c in scenario.time_conditions()] == ["sediment_layers", "sedimentation_rate", "base_level"]
+
+
+def test_preset_temperature_field_from_ascii(tmp_path):
+    '''read_preset_temperature_field reads an ASCII field of Mandyoc (input_temperature_0.txt) with the
+    param.txt of its folder; the values go from the bottom-left node, x first.'''
+    from tapioca._aux_functions import read_preset_temperature_field
+    nx, nz = 4, 3
+    (tmp_path / 'param.txt').write_text(f"nx = {nx}\nnz = {nz}\nlx = 3000.0\nlz = 2000.0 # comment\n")
+    values = np.arange(nx*nz, dtype=float)
+    (tmp_path / 'input_temperature_0.txt').write_text('# T1\n# T2\n# T3\n# T4\n' + '\n'.join(f'{v:g}' for v in values) + '\n')
+    temperature, source = read_preset_temperature_field(str(tmp_path / 'input_temperature_0.txt'))
+    assert temperature.shape == (nz, nx)
+    assert np.allclose(temperature.z, [-2000.0, -1000.0, 0.0]) and np.allclose(temperature.x, [0, 1000, 2000, 3000])
+    assert np.allclose(temperature.values, values.reshape(nz, nx))
+    with pytest.raises(ValueError):
+        read_preset_temperature_field(str(tmp_path / 'input_temperature_0.txt'), time=10.0)

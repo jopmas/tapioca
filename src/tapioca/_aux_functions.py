@@ -345,7 +345,9 @@ def read_preset_temperature_field(path, time=None):
     ----------
     path: str
         Folder of the preliminary scenario, with temperature.nc (read with MandyocScen) or with param.txt and the
-        temperature_*.txt of Mandyoc, or a NetCDF file with its temperature (e.g. _output_temperature.nc).
+        temperature_*.txt of Mandyoc, or a NetCDF file with its temperature (e.g. _output_temperature.nc), or a
+        temperature file of Mandyoc in ASCII (e.g. input_temperature_0.txt, the initial field of a scenario), with
+        param.txt (nx, nz, lx, lz) in its folder.
     time: float
         Time of the field [Myr], the nearest one of the NetCDF file (default: the last one). Only with NetCDF files.
 
@@ -358,6 +360,27 @@ def read_preset_temperature_field(path, time=None):
 
     def select(temperature):
         return temperature.isel(time=-1) if(time is None) else temperature.sel(time=time, method='nearest')
+
+    if(os.path.isfile(path) and path.endswith('.txt')): #ASCII field of Mandyoc (e.g. input_temperature_0.txt)
+        if(time is not None):
+            raise ValueError(f"preset time: only with a NetCDF file of the temperature, not with {path}")
+        if(not os.path.isfile(os.path.join(folder, 'param.txt'))):
+            raise FileNotFoundError(f"preset_initial_temperature: no param.txt next to {path} (nx, nz, lx, lz of the field)")
+        params = read_params(os.path.join(folder, 'param.txt'))
+        nx, nz = int(params['nx']), int(params['nz'])
+        values = []
+        with open(path) as file: #skips the header lines (# T1 ... of the input files, or text of the outputs)
+            for line in file:
+                try:
+                    values.append(float(line.split()[0]))
+                except (ValueError, IndexError):
+                    continue
+        if(len(values) != nx*nz):
+            raise ValueError(f"preset_initial_temperature: {path} has {len(values)} values, not nx*nz = {nx}*{nz} "
+                             f"(param.txt of its folder)")
+        temperature = xr.DataArray(np.reshape(values, (nz, nx)), dims=('z', 'x'), #from the bottom to the top
+                                   coords={'z': np.linspace(-params['lz'], 0, nz), 'x': np.linspace(0, params['lx'], nx)})
+        return temperature.astype(np.float64), path
 
     fname = path if(os.path.isfile(path)) else os.path.join(folder, 'temperature.nc')
     if(os.path.isfile(fname)): #NetCDF file with the temperature (only this field is needed: no MandyocScen)

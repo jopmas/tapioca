@@ -215,3 +215,6 @@ __marimo__/
 
 # AI trash
 .continue/
+
+# macOS
+.DS_Store

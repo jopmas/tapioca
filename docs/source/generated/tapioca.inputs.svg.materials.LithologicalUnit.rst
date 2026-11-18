@@ -19,13 +19,4 @@
 
    
    
-   .. rubric:: Attributes
-
-   .. autosummary::
-   
-      ~LithologicalUnit.activation_energy
-      ~LithologicalUnit.activation_volume
-      ~LithologicalUnit.power_law_exponent
-      ~LithologicalUnit.pre_exponential_constant
-   
    

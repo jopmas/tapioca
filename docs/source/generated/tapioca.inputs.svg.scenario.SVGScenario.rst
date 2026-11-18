@@ -24,6 +24,7 @@
       ~SVGScenario.write_all
       ~SVGScenario.write_scripts
       ~SVGScenario.yield_strength_envelope
+      ~SVGScenario.zip_inputs
    
    
 
@@ -33,6 +34,7 @@
 
    .. autosummary::
    
+      ~SVGScenario.INPUT_FILES
       ~SVGScenario.TP
       ~SVGScenario.ccapacity
       ~SVGScenario.dt_rifting2

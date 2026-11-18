@@ -58,6 +58,10 @@ description gives the dimensions and the resolution of the Mandyoc grid:
                      dx = 2 km        (or Nx = 801)
                      dz = 2 km        (or Nz = 201)
                      min_thickness = 1 km   (optional, see remove_slivers; 0 km keeps the slivers)
+                     sampling = 100 m       (optional, vertical sampling of the SVG to locate the interfaces;
+                                             smaller than the thinnest unit, e.g. 1 mm in a domain of 1 m)
+                     rheology_model = 9     (optional, any parameter of param.txt of tapioca.PARAMS_TYPES, which
+                                             replaces the value of SVGScenario; nx, nz, lx, lz are set by the domain)
 
 It may also give the settings of the numerical experiment, which are returned
 as text in setup["experiment"] and read by the
@@ -130,7 +134,7 @@ from matplotlib.path import Path as MplPath
 from matplotlib.patches import Patch
 import svgelements as se
 
-from ..._variables import DEFAULT_MATERIAL, INTERFACES_PARAMETERS, UNITS
+from ..._variables import DEFAULT_MATERIAL, INTERFACES_PARAMETERS, UNITS, PARAMS_TYPES
 from ..._aux_functions import split_unit
 from ..generic_input_classes import MandyocBuilder
 from ..checks import SVGInputError, SVGChecks
@@ -139,7 +143,7 @@ from ._variables import SP_PARAMS
 
 __all__ = ["SVGInputError", "SVG_VERSION", "INKSCAPE_VERSION", "svg_versions", "read_setup", "read_units", "unit_layer", "layers_from_svg", "layers_to_builder", "write_interfaces",
            "layer_indices", "slot_thickness", "layer_thickness",
-           "plot_layers", "points_from_spacing", "EXPERIMENT_KEYS", "SETUP_LABEL"]
+           "plot_layers", "points_from_spacing", "EXPERIMENT_KEYS", "SETUP_LABEL", "SAMPLING"]
 
 
 SVG_NS = "{http://www.w3.org/2000/svg}"
@@ -150,8 +154,11 @@ SVG_VERSION = "1.1"  # version of the SVG format read by tapioca
 INKSCAPE_VERSION = "1.4"  # version of Inkscape (major.minor) used to draw and test the SVG scenarios
 SETUP_LABEL = "setup"  # label (or id) of the shape that gives the model domain, the resolution and the experiment
 MIN_THICKNESS = 1.0e3  # default min_thickness [m]: thinner pieces of units drawn thicker elsewhere are removed (see remove_slivers)
+SAMPLING = 100.0  # default vertical sampling [m] used to locate the interfaces in the SVG (see rasterize)
+GRID_PARAMS = ("nx", "ny", "nz", "lx", "ly", "lz", "dimensions", "n_interfaces")  # parameters of param.txt set by the grid
 FULL_WIDTH_TOL = 0.02  # shapes whose sides are this close (fraction of Lx) to both sides of the domain are stretched to them (see rasterize)
 EXPERIMENT_KEYS = ("regime", "velocity", "moving_boundary", "time_max", "quiescence_time",
+                   "ti_convergence", "ti_quiescence", "quiescence_scale", "sticky_air",
                    "magmatism", "magmatism_extraction", "magmatism_Ts0", "preset_initial_temperature",
                    "preset_temperature_mode", "preset_time", "temperature_solver", "water_layer", "magmatic_layer",
                    "heat_capacity", "thermal_expansion_coefficient", "gravity_acceleration",
@@ -238,9 +245,11 @@ def svg_versions(svg_file):
 def read_setup(svg_file):
     '''
     Read the shape labelled "setup" (see the module docstring).
-    Return dict(id, Lx, Lz, Nx, Nz, experiment and min_thickness if given) with lengths in m, or None if the
-    SVG has no setup shape.
+    Return dict(id, Lx, Lz, Nx, Nz, experiment, params and min_thickness and sampling if given) with lengths in m,
+    or None if the SVG has no setup shape.
     experiment is a dict with the settings of the numerical experiment given in the description (as text).
+    params is a dict with the other parameters of param.txt given in the description (keys of tapioca.PARAMS_TYPES,
+    as text, e.g. rheology_model = 9), which replace the values of SVGScenario in param.txt.
     '''
     root = ET.parse(svg_file).getroot()
     label = SETUP_LABEL
@@ -257,7 +266,7 @@ def read_setup(svg_file):
     if desc is None or not (desc.text or "").strip():
         raise SVGInputError(f"{where}: write Lx, Lz and the resolution (dx and dz, or Nx and Nz) in its description.")
 
-    values, experiment = {}, {}
+    values, experiment, params = {}, {}, {}
     for line in desc.text.splitlines():
         line = line.split("#")[0].strip()
         if not line:
@@ -267,7 +276,7 @@ def read_setup(svg_file):
         key, value = (s.strip() for s in line.split("=", 1))
         if key == "min_thickness" and re.fullmatch(r"0*\.?0*\s*(km|m)?", value):
             values[key] = 0.0  # keep the slivers
-        elif key in ("Lx", "Lz", "dx", "dz", "min_thickness"):
+        elif key in ("Lx", "Lz", "dx", "dz", "min_thickness", "sampling"):
             values[key] = parse_thickness(value, where, key)
         elif key in ("Nx", "Nz"):
             try:
@@ -276,15 +285,21 @@ def read_setup(svg_file):
                 raise SVGInputError(f"{where}: {key} must be an integer.")
         elif key in EXPERIMENT_KEYS:
             experiment[key] = value
+        elif key in GRID_PARAMS:
+            raise SVGInputError(f"{where}: {key} of param.txt is set by the domain; use Lx, Lz, dx, dz (or Nx, Nz).")
+        elif key in PARAMS_TYPES:
+            params[key] = value
         else:
-            raise SVGInputError(f"{where}: unknown key '{key}'. Use Lx, Lz, dx, dz (or Nx, Nz), min_thickness and {', '.join(EXPERIMENT_KEYS)}.")
+            raise SVGInputError(f"{where}: unknown key '{key}'. Use Lx, Lz, dx, dz (or Nx, Nz), min_thickness, sampling, "
+                                f"{', '.join(EXPERIMENT_KEYS)} or a parameter of param.txt (tapioca.PARAMS_TYPES).")
 
     for key in ("Lx", "Lz"):
         if key not in values:
             raise SVGInputError(f"{where}: missing {key} in the description.")
-    setup = dict(id=el.get("id"), Lx=values["Lx"], Lz=values["Lz"], experiment=experiment)
-    if "min_thickness" in values:
-        setup["min_thickness"] = values["min_thickness"]
+    setup = dict(id=el.get("id"), Lx=values["Lx"], Lz=values["Lz"], experiment=experiment, params=params)
+    for key in ("min_thickness", "sampling"):
+        if key in values:
+            setup[key] = values[key]
     for d, N, L in (("dx", "Nx", "Lx"), ("dz", "Nz", "Lz")):
         if d in values:
             setup[N] = points_from_spacing(values[L], values[d], d)
@@ -478,6 +493,9 @@ def rasterize(svg_file, shape_unit, unit_names, Lx, Lz, Nx, dz, setup_id=None, f
         x0, y0, x1, y1 = 0.0, 0.0, float(svg.width), float(svg.height)
 
     Nzs = int(round(Lz / dz))
+    if Nzs < 2:
+        raise SVGInputError(f"The vertical sampling ({dz:g} m) is not smaller than the domain (Lz = {Lz:g} m): give a "
+                            f"smaller sampling (e.g. sampling = {Lz / 500:g} m in the setup shape).")
     dz = Lz / Nzs
     x = np.linspace(0, Lx, Nx)
     zdepth = (np.arange(Nzs) + 0.5) * dz  # depth of samples (positive downwards)
@@ -807,7 +825,7 @@ def rescale_thickness(stack, base, grid, under, unit_names, units, Lz, dz):
     new_base = np.take_along_axis(depth_new, np.round(base / dz).astype(int), axis=0)
     new_base[0] = Lz
 
-    if new_base[1].max() > Lz:
+    if len(new_base) > 1 and new_base[1].max() > Lz:  # a single unit (e.g. the punch) has nothing above it
         ix = int(np.argmax(new_base[1]))
         raise SVGInputError(f"The layers above the bottom unit are {new_base[1, ix] / 1e3:.1f} km thick at column {ix}, "
                  f"more than Lz = {Lz / 1e3:.1f} km. Reduce h of some units.")
@@ -1000,7 +1018,8 @@ def _main():
     parser.add_argument("--Lz", type=float, help="domain depth [km] (default: from the setup shape)")
     parser.add_argument("--dx", type=float, help="horizontal resolution [km] (default: from the setup shape)")
     parser.add_argument("--Nx", type=int, help="number of points in x (alternative to --dx)")
-    parser.add_argument("--sampling", type=float, default=0.1, help="vertical sampling to locate the interfaces [km] (default 0.1)")
+    parser.add_argument("--sampling", type=float, help="vertical sampling to locate the interfaces [km] (default: from the setup "
+                        "shape, or 0.1)")
     parser.add_argument("--min-thickness", type=float, help="remove thinner pieces [km] of units drawn thicker elsewhere, "
                         "left by overlapping shapes; 0 keeps them (default: from the setup shape, or 1 km)")
     parser.add_argument("--setup-id", help="id of an element whose bounding box is the domain (default: the shape labelled 'setup', or the page)")
@@ -1023,7 +1042,8 @@ def _main():
     print(f"Domain: Lx = {Lx / 1e3:g} km, Lz = {Lz / 1e3:g} km, Nx = {Nx}")
 
     min_thickness = args.min_thickness * 1.0e3 if args.min_thickness is not None else None
-    layers = layers_from_svg(args.svg, Lx, Lz, Nx, dz=args.sampling * 1.0e3, setup_id=args.setup_id, min_thickness=min_thickness)
+    sampling = args.sampling * 1.0e3 if args.sampling else setup.get("sampling", SAMPLING)
+    layers = layers_from_svg(args.svg, Lx, Lz, Nx, dz=sampling, setup_id=args.setup_id, min_thickness=min_thickness)
     write_interfaces(layers, Lx, Lz, args.output)
     print(f"Wrote {args.output}")
 

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- punch of Mandyoc (examples/punch): rigid punch on a perfectly plastic material (Prandtl), non-dimensional (1 x 0.5). -->
+<!-- One material (rho = 0, g = 0) and no sticky air (sticky_air = off, as the second interface of the notebook, at the top). The vertical sampling of the SVG is 1 mm (sampling = 0.001 m), smaller than the domain. -->
+<!-- The punch is the velocity of build_veloc.py (custom_veloc_field): vz = -1 at the top for |x - 0.5| <= 0.08, and its bcv_0.txt (bcv_extern = True) frees the other nodes, as in create_input_files_punch.ipynb. The regime is only the base of the custom velocity field (quiescence has no velocity). -->
+<!-- 1 user unit = 1 mm; page = model domain. Written by make_classical_examples.py. -->
+<svg
+   width="1000mm"
+   height="500mm"
+   viewBox="0 0 1000 500"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg">
+  <g inkscape:groupmode="layer" id="layer1" inkscape:label="lithologies">
+    <rect id="asthenosphere" inkscape:label="asthenosphere" x="0" y="0" width="1000" height="500" style="fill:#cfe2cd;stroke:none">
+      <title id="title1">Material</title>
+      <desc id="desc1">wet olivine
+C = 1.0
+rho = 0.0
+H = 0.0
+A = 0.0
+n = 0.0
+Q = 0.0
+V = 0.0</desc>
+    </rect>
+  </g>
+  <g inkscape:groupmode="layer" id="layer_setup" inkscape:label="domain">
+    <rect id="setup" inkscape:label="setup" x="0" y="0" width="1000" height="500" style="fill:none;stroke:#ff0000;stroke-width:1">
+      <title id="title_setup">Model setup</title>
+      <desc id="desc_setup">Lx = 1 m
+Lz = 0.5 m
+Nx = 401
+Nz = 201
+sticky_air = off
+sampling = 0.001 m
+min_thickness = 0
+regime = compression
+custom_veloc_field = build_veloc.py
+time_max = 130 Myr
+gravity_acceleration = 0
+denok = 1.0e-11
+particles_per_element = 81
+Xi_min = 1.0e-12
+random_initial_strain = 0.0
+basal_heat = -1.0
+sp_surface_tracking = False
+step_max = 0
+step_print = 1
+viscosity_reference = 1.0e4
+viscosity_max = 1.0e4
+viscosity_min = 1.0e-2
+bcv_extern = True
+temperature_from_ascii = False
+geoq_fac = 1.0
+temperature_difference = 0.0
+adiabatic_component = off
+radiogenic_component = off
+rheology_model = 70
+T_initial = 0</desc>
+    </rect>
+  </g>
+</svg>

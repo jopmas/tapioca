@@ -16,6 +16,7 @@ Python package (`tapioca-mandyoc`) to build inputs for and post-process outputs 
   - Code specific to SVG belongs here, not in the generic builders. Generic helpers go to `_aux_functions.py`.
 - `src/postrunning/`: scripts to organize and convert the outputs of Mandyoc, some copied next to the scenario inputs.
 - `examples/svg_scenarios/`: example SVGs. Every layer has a reference thickness `h`, except the bottom one (the asthenosphere), which fills the rest of the domain, layers whose thickness changes smoothly along x, and templates drawn outside the domain (materials of layers of zero thickness, e.g. the sediments of `sediment_layer`).
+- `examples/classical_examples/`: the examples of Mandyoc as SVG scenarios, written by `make_classical_examples.py` (the punch velocity in `punch/build_veloc.py`). They use `sticky_air = off`, `sampling`, the accordion times and parameters of `param.txt` in the setup shape.
 - `docs/source/abstractions/svg_scenarios.md`: architecture of the SVG scenarios (Mermaid diagrams).
 - `tests/`: pytest suite.
 

@@ -193,6 +193,13 @@ flowchart LR
     scenario) it is the top of that slot; in a deformed state the asthenosphere may have more than one slot (e.g.
     a lens in the lithospheric mantle), and a lithospheric body inside the asthenosphere stays below the LAB. The
     surface is passed by ID to `TemperatureFieldBuilder`; the LAB is passed as its `z` along `x`.
+*   **Without sticky air** (`sticky_air = off`, e.g. the benchmarks of `examples/classical_examples`): the top unit
+    drawn is a solid, and `SVGScenario` appends a sticky air of zero thickness at the top of the domain, so the
+    stack keeps the sticky air as its top layer (ID `-1`) and the surface is the top of the domain.
+*   **Parameters of `param.txt` in the setup shape:** keys of `PARAMS_TYPES` that are not settings of the
+    experiment go to `SVGScenario.svg_params` and replace the values of `SVGScenario.parameters`; the keyword
+    arguments of `write_all` replace them. `temperature_difference = 0` makes the scenario isothermal (0 oC, no
+    solver).
 *   **Water and magmatic layers:** chosen by the user (label or ID), never guessed from their position.
 
 ---

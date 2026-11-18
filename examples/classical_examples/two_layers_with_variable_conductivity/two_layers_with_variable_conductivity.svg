@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- two_layers_with_variable_conductivity of Mandyoc (examples/two_layers_with_variable_conductivity). -->
+<!-- Two layers of 20 km with the same material but the thermal diffusivity: k = 1e-6 (below) and 0.25e-6 m2/s (above). No sticky air (sticky_air = off). -->
+<!-- Initial temperature of the notebook (700 oC * depth / Lz) in initial_temperature/input_temperature_0.txt (preset_initial_temperature, field mode); free temperature at the sides, no deformation (viscosity_min = viscosity_max = 1e25 Pa s). -->
+<!-- 1 user unit = 1 km; page = model domain. Written by make_classical_examples.py. -->
+<svg
+   width="40mm"
+   height="40mm"
+   viewBox="0 0 40 40"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg">
+  <g inkscape:groupmode="layer" id="layer1" inkscape:label="lithologies">
+    <rect id="asthenosphere" inkscape:label="asthenosphere" x="0" y="0" width="40" height="40" style="fill:#cfe2cd;stroke:none">
+      <title id="title1">Lower layer</title>
+      <desc id="desc1">wet olivine
+C = 1.0
+rho = 3300.0
+H = 0.0
+A = 1.393e-14
+n = 3.0
+Q = 429.0e3
+V = 15.0e-6
+k = 1.0e-6</desc>
+    </rect>
+    <rect id="upper_layer" inkscape:label="upper_layer" x="0" y="0" width="40" height="20" style="fill:#e49c7c;stroke:none">
+      <title id="title2">Upper layer</title>
+      <desc id="desc2">wet olivine
+C = 1.0
+rho = 3300.0
+H = 0.0
+h = 20 km
+A = 1.393e-14
+n = 3.0
+Q = 429.0e3
+V = 15.0e-6
+k = 0.25e-6</desc>
+    </rect>
+  </g>
+  <g inkscape:groupmode="layer" id="layer_setup" inkscape:label="domain">
+    <rect id="setup" inkscape:label="setup" x="0" y="0" width="40" height="40" style="fill:none;stroke:#ff0000;stroke-width:0.04">
+      <title id="title_setup">Model setup</title>
+      <desc id="desc_setup">Lx = 40 km
+Lz = 40 km
+Nx = 11
+Nz = 11
+sticky_air = off
+regime = quiescence
+time_max = 100 Myr
+min_thickness = 0
+preset_initial_temperature = initial_temperature/input_temperature_0.txt
+preset_temperature_mode = field
+denok = 1.0e-15
+Xi_min = 1.0e-7
+sp_surface_tracking = False
+step_max = 20000
+dt_max = 5.0e3
+step_print = 1000
+viscosity_min = 1.0e25
+non_linear_method = off
+adiabatic_component = off
+radiogenic_component = off
+left_temperature = free
+right_temperature = free
+rheology_model = 9</desc>
+    </rect>
+  </g>
+</svg>

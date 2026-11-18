@@ -3,13 +3,14 @@ Command line interface of the scenario builder:
 
     tapioca-svg scenario.svg [-o output_dir] [--dx 1] [--dz 1] [--regime rifting] [--velocity 1]
                 [--moving-boundary right] [--quiescence-time 0] [--time-max 500]
+                [--ti-convergence 25] [--ti-quiescence 75] [--quiescence-scale 0.01] [--sticky-air on]
                 [--magmatism off] [--magmatism-extraction off] [--magmatism-Ts0 1080]
                 [--heat-capacity 1250] [--thermal-expansion-coefficient 3.28e-5] [--gravity-acceleration 10]
                 [--preset-initial-temperature path/to/preliminary] [--preset-temperature-mode profile]
                 [--preset-time 10] [--custom-veloc-field build_veloc.py]
                 [--sp-surface-processes True] [--sp-mode theunissen_sedimentation] [--sp-format ggciag] [--sediment-layer sediments]
                 [--ti-sed 0] [--tf-sed 70] [--dt-sed 1] [--sedimentation-rate "0 Myr: 25, 20 Myr: 50"] [--Ld 35000] [--base-level -500]
-                [--min-thickness 1] [--no-plots]
+                [--min-thickness 1] [--sampling 100] [--no-plots]
                 [--system linux] [--ncores 20] [--job-name NAME] [--mail-user E-MAIL] [--mandyoc-options="-seed 0,5,8 -strain_seed 0.0,1.0,1.0"] [--no-scripts] [--no-zip]
                 [--no-post-processing]
 
@@ -42,6 +43,13 @@ def main(argv=None):
     parser.add_argument('--time-max', type=float, help='duration of the simulation [Myr] (default: from the SVG, or 60 Myr in rifting '
                                                        'and compression, the end of the second extension in accordion and the '
                                                        'quiescence time (or 1000 Myr) in quiescence)')
+    parser.add_argument('--ti-convergence', type=float, help='accordion: start of the convergence [Myr] (default: from the SVG, or 25 Myr)')
+    parser.add_argument('--ti-quiescence', type=float, help='accordion: end of the convergence and start of the quiescence [Myr] '
+                                                            '(default: from the SVG, or 75 Myr)')
+    parser.add_argument('--quiescence-scale', type=float, help='accordion: velocity of the quiescence as a fraction of the velocity '
+                                                               '(0 stops the boundaries; default: from the SVG, or 0.01)')
+    parser.add_argument('--sticky-air', choices=['on', 'off'], help='off: the top unit drawn is a solid and a sticky air of zero '
+                                                                    'thickness is added at the top (default: from the SVG, or on)')
     parser.add_argument('--magmatism', choices=['on', 'off'], help='melting in Mandyoc (default: from the SVG, or off)')
     parser.add_argument('--magmatism-extraction', choices=['on', 'off'],
                         help='extraction of the melt to a basalt layer below the sticky air (default: from the SVG, or off)')
@@ -88,6 +96,8 @@ def main(argv=None):
     parser.add_argument('--base-level', type=float, help='base level [m] of base_level.txt (default: from the SVG, or none)')
     parser.add_argument('--min-thickness', type=float, help='remove thinner pieces [km] of units drawn thicker elsewhere, left by '
                                                             'overlapping shapes; 0 keeps them (default: from the SVG, or 1 km)')
+    parser.add_argument('--sampling', type=float, help='vertical sampling of the SVG to locate the interfaces [m] (default: from '
+                                                       'the SVG, or 100 m)')
     parser.add_argument('--no-plots', action='store_true', help='do not create numerical_setup.png and initial_temperature.png')
     parser.add_argument('--system', choices=SYSTEMS, help='system of the run script of Mandyoc; hypatia: SLURM job on the '
                                                           'cluster of the group (default: the system that runs tapioca)')
@@ -106,7 +116,9 @@ def main(argv=None):
     try:
         scenario = SVGScenario(args.svg_file, dx=args.dx, dz=args.dz, regime=args.regime, velocity=args.velocity,
                                moving_boundary=args.moving_boundary, quiescence_time=args.quiescence_time,
-                               time_max=args.time_max, magmatism=args.magmatism,
+                               time_max=args.time_max, ti_convergence=args.ti_convergence,
+                               ti_quiescence=args.ti_quiescence, quiescence_scale=args.quiescence_scale,
+                               sticky_air=args.sticky_air, magmatism=args.magmatism,
                                magmatism_extraction=args.magmatism_extraction, magmatism_Ts0=args.magmatism_Ts0,
                                heat_capacity=args.heat_capacity,
                                thermal_expansion_coefficient=args.thermal_expansion_coefficient,
@@ -120,7 +132,7 @@ def main(argv=None):
                                sediment_layer=args.sediment_layer, ti_sed=args.ti_sed, tf_sed=args.tf_sed,
                                dt_sed=args.dt_sed, sedimentation_rate=args.sedimentation_rate, Ld=args.Ld,
                                base_level=args.base_level,
-                               min_thickness=args.min_thickness)
+                               min_thickness=args.min_thickness, sampling=args.sampling)
         scenario.write_all(args.output_dir, plots=not args.no_plots, scripts=not args.no_scripts, system=args.system,
                            ncores=args.ncores, mandyoc_options=args.mandyoc_options,
                            post_processing=not args.no_post_processing, zip_inputs=not args.no_zip,

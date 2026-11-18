@@ -13,7 +13,13 @@ experiment:
     velocity = 1 cm/yr
     moving_boundary = right                    (left, right or symmetric)
     quiescence_time = 0 Myr
+    ti_convergence = 25 Myr                    (accordion: start of the convergence)
+    ti_quiescence = 75 Myr                     (accordion: end of the convergence, start of the quiescence)
+    quiescence_scale = 0.01                    (accordion: fraction of the velocity in the quiescence; 0 stops it)
     time_max = 500 Myr
+    sticky_air = on                            (off: the top unit drawn is a solid, no sticky air)
+    sampling = 100 m                           (vertical sampling of the SVG, see reader.layers_from_svg)
+    rheology_model = 9                         (and any other parameter of param.txt, see below)
     magmatism = off
     magmatism_extraction = off
     magmatism_Ts0 = 1080
@@ -62,6 +68,14 @@ With both, a tf_sed before time_max adds a last change at tf_sed with rate 0, wh
 Each setting may also be given to SVGScenario (or on the command line, tapioca-svg),
 which overrides the SVG; without it, the default is used.
 
+Other parameters of param.txt (keys of tapioca.PARAMS_TYPES that are not settings, e.g. rheology_model, viscosity_min,
+temperature_difference, step_max) may be written in the description of the setup shape too: they replace the values of
+the scenario in param.txt (svg_params), and the keyword arguments of write_all replace them.
+
+Without sticky air (sticky_air = off), the top unit drawn is a solid (e.g. the upper of two layers): tapioca adds a
+sticky air of zero thickness at the top of the domain (the interface of the top layer at z = 0, as in the punch of
+Mandyoc), so the surface is the top of the domain, and sticky_blanket_air = False in param.txt.
+
 Example
 -------
     from tapioca.inputs.svg import SVGScenario
@@ -90,16 +104,16 @@ from ._variables import (REGIMES, MANTLE_RHEOLOGIES, SYSTEMS, DEFAULT_PARAMS, SP
                          POST_PROCESSING_SCRIPT, NO_POST_PROCESSING_SCRIPT,
                          RUN_LAUNCHER, PETSC_ENV, PETSC_ENV_LOOKUP, ZIP_SCRIPT, HYPATIA, HYPATIA_SCRIPT,
                          HYPATIA_CONDA_SCRIPT)
-from .materials import MandyocLayer, BASALT
+from .materials import MandyocLayer, BASALT, AIR
 from ... import __version__
-from .reader import (SVGInputError, SETUP_LABEL, MIN_THICKNESS, EXPERIMENT_KEYS, SVG_VERSION, INKSCAPE_VERSION,
+from .reader import (SVGInputError, SETUP_LABEL, MIN_THICKNESS, SAMPLING, EXPERIMENT_KEYS, SVG_VERSION, INKSCAPE_VERSION,
                      svg_versions, read_setup, layers_from_svg, layers_to_builder, points_from_spacing, parse_quantity,
                      layer_indices, slot_thickness, layer_thickness, unit_layer)
 
 # (setting, minimum, value must be greater than the minimum): used in param.txt and in the initial temperature
 THERMAL_SETTINGS = (("heat_capacity", 0.0, True),
                     ("thermal_expansion_coefficient", 0.0, False),
-                    ("gravity_acceleration", 0.0, True))
+                    ("gravity_acceleration", 0.0, False)) #0: no gravity, as in the punch of Mandyoc
 
 __all__ = ["SVGScenario", "REGIMES"]
 
@@ -137,10 +151,20 @@ class SVGScenario(SVGChecks, VerboseExtension):
         centre of the domain). Default: right.
     quiescence_time : float, optional
         Duration of the quiescence [Myr] in the accordion and quiescence regimes. Default: 0 Myr.
+    ti_convergence, ti_quiescence : float, optional
+        Accordion: end of the first extension (start of the convergence) and end of the convergence (start of
+        the quiescence) [Myr]. Default: 25 and 75 Myr.
+    quiescence_scale : float, optional
+        Accordion: velocity of the quiescence as a fraction of the velocity of the convergence (scale_bcv.txt).
+        0 stops the boundaries, which is only possible without a second extension (time_max at the end of the
+        quiescence). Default: 0.01.
+    sticky_air : str, optional
+        'on' (the top unit is the sticky air, with 'air' in the first line of its description) or 'off' (the top
+        unit drawn is a solid; a sticky air of zero thickness is added at the top of the domain). Default: on.
     time_max : float, optional
         Duration of the simulation [Myr]. Default: 60 Myr in rifting and compression, the end of the
-        second extension in accordion (which time_max sets when given) and quiescence_time (or 1000 Myr)
-        in quiescence.
+        second extension in accordion (which time_max sets when given; at the end of the quiescence, there is no
+        second extension) and quiescence_time (or 1000 Myr) in quiescence.
     magmatism, magmatism_extraction : str, optional
         'on' or 'off'. Default: off. With both on, a basalt layer of zero thickness receives the extracted
         melt (see magmatic_layer).
@@ -185,8 +209,9 @@ class SVGScenario(SVGChecks, VerboseExtension):
 
     asthenosphere_label, seed_label : str
         Labels of the asthenosphere and of the weak seed in the SVG.
-    sampling : float
-        Vertical sampling used to locate the interfaces in the SVG [m].
+    sampling : float, optional
+        Vertical sampling used to locate the interfaces in the SVG [m]. Default: from the setup shape of the SVG,
+        or 100 m (reader.SAMPLING).
     min_thickness : float, optional
         Pieces of a unit thinner than min_thickness [km] in every column, when the unit is thicker
         elsewhere, are removed (slivers left by overlapping shapes; 0 keeps them). Default: from the setup
@@ -232,7 +257,7 @@ class SVGScenario(SVGChecks, VerboseExtension):
     profile_colors = ['tab:orange', 'tab:purple', 'tab:green', 'tab:blue', 'r', 'k'] #the thickest lithosphere is the last one
 
     def __init__(self, svg_file, dx=None, dz=None, asthenosphere_label='asthenosphere', seed_label='weak_seed',
-                 sampling=100.0, min_thickness=None, verbose=True, **settings):
+                 sampling=None, min_thickness=None, verbose=True, **settings):
 
         self.verbose = verbose
         self.svg_file = self._check_file('SVG file', svg_file)
@@ -261,9 +286,20 @@ class SVGScenario(SVGChecks, VerboseExtension):
         self.asthenosphere_label = asthenosphere_label
         self.seed_label = seed_label
         self.min_thickness = min_thickness * 1.0e3 if(min_thickness is not None) else setup.get('min_thickness', MIN_THICKNESS)
-        self.layers = layers_from_svg(svg_file, self.Lx, self.Lz, self.Nx, dz=sampling, setup_id=setup['id'],
+        self.sampling = self._check_number('sampling', sampling if(sampling is not None) else setup.get('sampling', SAMPLING), 0, strict=True)
+        self.layers = layers_from_svg(svg_file, self.Lx, self.Lz, self.Nx, dz=self.sampling, setup_id=setup['id'],
                                       min_thickness=self.min_thickness, verbose=verbose)
+        if(self.sticky_air == 'off'):
+            self._add_zero_air(svg_file)
         self._check_layers(self.layers, svg_file, asthenosphere_label)
+
+        #other parameters of param.txt given in the setup shape (they replace the values of the scenario)
+        self.svg_params = {}
+        for key, value in setup.get('params', {}).items():
+            try:
+                self.svg_params[key] = PARAMS_TYPES[key](value)
+            except ValueError:
+                self._fail(f"{key} = {value} in the setup shape of {svg_file}: expected {PARAMS_TYPES[key].__name__}.")
 
         #water and magmatic layers: chosen by the user (label, or ID of the layer from the bottom), never guessed
         water = self._setting('water_layer', settings.get('water_layer'), None)
@@ -364,6 +400,23 @@ class SVGScenario(SVGChecks, VerboseExtension):
         if(not indices):
             self._fail(f"{name} = {value}: no unit labelled '{value}' in {self.svg_file}.")
         return max(indices)
+
+    @property
+    def isothermal(self):
+        '''True if the SVG gives temperature_difference = 0 among the parameters of param.txt (see build_temperature).'''
+        return float(self.svg_params.get('temperature_difference', 1.0)) == 0.0
+
+    def _add_zero_air(self, svg_file):
+        '''
+        sticky_air = off: add a sticky air of zero thickness at the top of the stack (its interface at the top of the
+        domain), so the top unit drawn is the top solid layer and the surface is the top of the domain.
+        '''
+        if(self.layers[-1].rheology_name == 'air'):
+            self._fail(f"sticky_air = off, but the top unit of {svg_file} ('{self.layers[-1].layer_label}') is air: "
+                       f"remove it, or use sticky_air = on.")
+        air = MandyocLayer('air', AIR, Nx=self.Nx, base_depth=0.0, title='Sticky air (zero thickness)', color='#ffffff')
+        self.layers.append(air)
+        self._print_verbose(f"sticky_air = off: sticky air of zero thickness added at the top of the domain (layer {len(self.layers) - 1})")
 
     def _insert_basalt(self, index):
         '''Insert a basalt layer of zero thickness at index of the stack (below the layer at index); return its index.'''
@@ -530,6 +583,16 @@ class SVGScenario(SVGChecks, VerboseExtension):
         if(time_max is not None):
             time_max = self._check_number('time_max', time_max, 0, strict=True)
         self.quiescence_time = self._check_number('quiescence_time', setting('quiescence_time', 0.0, 'time', 'Myr', 1.0e-6), 0) #Myr
+        #accordion: times of the convergence and velocity of the quiescence (defaults: attributes of the class)
+        self.ti_convergence = self._check_number('ti_convergence', setting('ti_convergence', type(self).ti_convergence, 'time', 'Myr', 1.0e-6), 0, strict=True) #Myr
+        self.ti_quiescence = self._check_number('ti_quiescence', setting('ti_quiescence', type(self).ti_quiescence, 'time', 'Myr', 1.0e-6), 0, strict=True) #Myr
+        self.quiescence_scale = self._check_number('quiescence_scale', setting('quiescence_scale', 0.01), 0)
+        if(self.regime == 'accordion' and self.ti_quiescence <= self.ti_convergence):
+            self._fail(f"ti_quiescence = {self.ti_quiescence:g} Myr must be after ti_convergence = {self.ti_convergence:g} Myr.")
+        for name in ('ti_convergence', 'ti_quiescence', 'quiescence_scale'):
+            if(self.regime != 'accordion' and self.source[name] != 'default'):
+                self._warn(f"{name} is used only in the accordion regime.")
+        self.sticky_air = self._check_on_off('sticky_air', setting('sticky_air', 'on'))
 
         self.magmatism = self._check_on_off('magmatism', setting('magmatism', 'off'))
         self.magmatism_extraction = self._check_on_off('magmatism_extraction', setting('magmatism_extraction', 'off'))
@@ -583,10 +646,14 @@ class SVGScenario(SVGChecks, VerboseExtension):
         self.dt_quiescence = self.quiescence_time
         if(self.variable_bcv):
             self.tf_quiescence = self.ti_quiescence + self.dt_quiescence
-            if(time_max is not None): #time_max sets the duration of the second extension
+            if(time_max is not None): #time_max sets the duration of the second extension (0: no second extension)
                 self.dt_rifting2 = time_max - self.tf_quiescence
-                if(self.dt_rifting2 <= 0):
-                    self._fail(f"time_max = {time_max:g} Myr ends before the second extension starts ({self.tf_quiescence:g} Myr).")
+                if(self.dt_rifting2 < -1.0e-9):
+                    self._fail(f"time_max = {time_max:g} Myr ends before the end of the quiescence ({self.tf_quiescence:g} Myr).")
+                self.dt_rifting2 = max(self.dt_rifting2, 0.0)
+            if(self.quiescence_scale == 0 and self.dt_quiescence > 0 and self.dt_rifting2 > 0):
+                self._fail("quiescence_scale = 0 stops the boundaries for good (scale_bcv.txt multiplies the velocity): "
+                           f"set time_max = {self.tf_quiescence:g} Myr (no second extension) or a quiescence_scale above 0.")
             self.time_max = (self.tf_quiescence + self.dt_rifting2) * 1.0e6
         elif(time_max is not None):
             self.time_max = time_max * 1.0e6
@@ -766,6 +833,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
           scenario (at preset_time, or the last one) interpolated on the grid, with 0 oC in the sticky air. No
           solver is run: the scenario starts from that thermal state (and from its geometry, drawn in the SVG).
 
+        - isothermal scenarios (temperature_difference = 0 among the parameters of param.txt of the SVG, as the
+          benchmarks of Mandyoc): 0 oC everywhere, the temperature that Mandyoc keeps (it caps the temperature at
+          temperature_difference). No solver is run, so units with rho = 0 (e.g. van Keken et al., 1997) need no
+          conductivity.
+
         The field is also the temperature of the builder (self.builder.DTree.fields.temperature).
         '''
         ## NOTE (Claude): the LAB is given as its z along x (column by column, _find_lab) instead of the interface
@@ -773,7 +845,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
         self.temperature_builder = TemperatureFieldBuilder(self.builder, LAB_interface=-(self.thickness_sa + self.thickness_litho),
                                                            surface_interface=self.surface_id, c_cap=self.heat_capacity,
                                                            g=-self.gravity_acceleration, alpha=self.thermal_expansion_coefficient)
-        if(self.preset_initial_temperature is None):
+        if(self.isothermal and self.preset_initial_temperature is None):
+            self.temperature_builder.t_pot = self.TP
+            self.temperature_builder.temperature.values = np.zeros_like(self.temperature_builder.temperature.values)
+            self._print_verbose("Isothermal scenario (temperature_difference = 0): initial temperature of 0 oC")
+        elif(self.preset_initial_temperature is None):
             self.temperature_builder.apply_linear_temperature(t_pot=self.TP)
             if(self.temperature_solver == '2D'):
                 self.temperature_builder.solve_heat_2D()
@@ -883,7 +959,9 @@ class SVGScenario(SVGChecks, VerboseExtension):
         which sets the velocity at the boundaries of a VelocityFieldBuilder(scenario.builder, units='cm/y') (the
         net flux through the boundaries must be zero, e.g. with conservate_veloc) and returns it; the fields are
         then created by scenario.builder.create_velocity_field. Optionally, infos(scenario) returns a list of lines
-        that describe the velocity field in infos_<folder>.txt.
+        that describe the velocity field in infos_<folder>.txt, and write_files(scenario, output_dir) writes other
+        input files of the velocity (e.g. bcv_0.txt of bcv_extern) and returns their names, which write_all zips
+        with the inputs.
         '''
         module = self._load_custom_velocity()
         v = module.build_velocity(self)
@@ -909,17 +987,23 @@ class SVGScenario(SVGChecks, VerboseExtension):
 
     def _bcv_changes(self):
         '''[(time [Myr], factor)] of scale_bcv.txt in the accordion regime.'''
+        #the factors multiply the velocity of the moment (x -1: convergence; x quiescence_scale: quiescence;
+        #x -1/quiescence_scale: extension again)
+        changes = [(self.ti_convergence, -1.0)]
         if(self.dt_quiescence > 0):
-            return [(self.ti_convergence, -1.0), (self.ti_quiescence, 0.01), (self.tf_quiescence, -100.0),
-                    (self.time_max/1.0e6, 0.01)]
-        #no quiescence: convergence followed directly by extension
-        return [(self.ti_convergence, -1.0), (self.ti_quiescence, -1.0), (self.time_max/1.0e6, 0.01)]
+            changes.append((self.ti_quiescence, self.quiescence_scale))
+            if(self.dt_rifting2 > 0):
+                changes += [(self.tf_quiescence, -1.0 / self.quiescence_scale), (self.time_max/1.0e6, 0.01)]
+        elif(self.dt_rifting2 > 0): #no quiescence: convergence followed directly by extension
+            changes += [(self.ti_quiescence, -1.0), (self.time_max/1.0e6, 0.01)]
+        return changes
 
     def parameters(self, **params):
         '''
         Parameters of param.txt (dict): DEFAULT_PARAMS (tapioca.inputs.svg._variables) and those of the scenario
         (time_max, velocity, magmatism and thermal settings). The grid (nx, nz, lx, lz) and n_interfaces are set by
-        MandyocBuilder.set_params. Any parameter of PARAMS_TYPES can be changed with a keyword argument,
+        MandyocBuilder.set_params. The parameters of param.txt given in the setup shape of the SVG (svg_params)
+        replace these values. Any parameter of PARAMS_TYPES can be changed with a keyword argument,
         e.g. parameters(particles_per_element=100, rheology_model=9). This only changes the returned values: to
         change a thermal setting in the whole scenario, use write_all or the setting of the scenario.
         '''
@@ -944,6 +1028,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
                 'magmatism_Ts0': self.magmatism_Ts0,
                 'magmatic_layer': self.magmatic_layer,
                 **{name: getattr(self, name) for name, _, _ in THERMAL_SETTINGS},
+                **({'sticky_blanket_air': False} if(self.sticky_air == 'off') else {}),
+                **self.svg_params,
                 **params}
 
     def _update_thermal_settings(self, params):
@@ -1139,6 +1225,12 @@ class SVGScenario(SVGChecks, VerboseExtension):
             np.savetxt(path("vel_bc.txt"), np.array([v0, vf]).T)
             np.savetxt(path("velz_bc.txt"), self.VZ[(self.z == 0)].T)
             builder.export_field('velocity', header="v1\nv2\nv3\nv4")
+            #other files of the velocity written by the script of custom_veloc_field (e.g. bcv_0.txt)
+            self.custom_files = []
+            if(self.custom_veloc_field is not None):
+                module = self._load_custom_velocity()
+                if(callable(getattr(module, 'write_files', None))):
+                    self.custom_files = [os.path.basename(f) for f in (module.write_files(self, output_dir) or [])]
 
         #files of conditions that change in time (scale_bcv.txt, files of the surface processes), written by the
         #builder with the others set in it by script (builder.set_time_conditions)
@@ -1182,6 +1274,7 @@ class SVGScenario(SVGChecks, VerboseExtension):
                  + [f'infos_{name}.txt', os.path.basename(self.svg_file)])
         if(self.custom_veloc_field is not None):
             files.append(os.path.basename(self.custom_veloc_field))
+        files += getattr(self, 'custom_files', [])
         files = [fname for fname in dict.fromkeys(files) if os.path.isfile(os.path.join(output_dir, fname))]
         with zipfile.ZipFile(target, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
             for fname in files:
@@ -1209,8 +1302,13 @@ class SVGScenario(SVGChecks, VerboseExtension):
         if(self.variable_bcv):
             lines += [f"Extension: 0 - {self.ti_convergence} Myr",
                       f"Convergence: {self.ti_convergence} - {self.ti_quiescence} Myr",
-                      f"Time of quiescence: {self.dt_quiescence} Myr ({self.ti_quiescence} - {self.tf_quiescence} Myr)",
+                      f"Time of quiescence: {self.dt_quiescence} Myr ({self.ti_quiescence} - {self.tf_quiescence} Myr), "
+                      f"velocity x {self.quiescence_scale:g}",
                       f"Second extension: {self.dt_rifting2} Myr ({self.tf_quiescence} - {self.time_max/1.0e6} Myr)", ' ']
+        if(self.sticky_air == 'off'):
+            lines += ["Sticky air: none (sticky_air = off; a layer of zero thickness at the top of the domain)", ' ']
+        if(self.svg_params):
+            lines += ["Parameters of param.txt from the SVG: " + ", ".join(f"{k} = {v}" for k, v in self.svg_params.items()), ' ']
         lines.append(f'Layers (bottom to top) from {self.svg_file}, thickness at x = {self.x_profile/1.0e3:.0f} km:')
         sediments = set(self.sediment_layers)
         for i, layer in enumerate(layers):
@@ -1290,7 +1388,7 @@ class SVGScenario(SVGChecks, VerboseExtension):
         sa = self.thickness_sa[self.idx_profile]
 
         fig, ax0 = plt.subplots(nrows=1, ncols=1, constrained_layout=True, figsize=(16, 6))
-        im = ax0.contourf(X / 1.0e3, (-Z + sa) / 1.0e3, T, levels=np.arange(0, np.max(T) + 100, 100), cmap='inferno')
+        im = ax0.contourf(X / 1.0e3, (-Z + sa) / 1.0e3, T, levels=np.arange(0, max(np.max(T), 100.0) + 100, 100), cmap='inferno') #at least 2 levels (isothermal: 0 oC)
         isotherms = ax0.contour(X / 1.0e3, (-Z + sa) / 1.0e3, T, levels=[600, 1000, 1300], colors='w', linewidths=1.0, linestyles='--')
         ax0.clabel(isotherms, fmt='%d °C', fontsize=10)
         for layer in self.layers[1:]:

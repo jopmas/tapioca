@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- continental_rift_with_surface_processes of Mandyoc (examples/continental_rift_with_surface_processes). -->
+<!-- Layers (from Mandyoc): sticky air 40 km, upper crust 20 km, lower crust 20 km, lithosphere 130 km; weak seed = lithospheric mantle with C = 0.1, 6 km thick, 13 km below the Moho, two nodes wide at x = 750 km. -->
+<!-- Extension at 1 cm/yr at the right boundary, 100 Myr, with surface processes. -->
+<!-- The notebook uses the old sp_mode = 5 (erosion with the precipitation.txt profile, k_sp = 0.0008 m/yr, sp_dt = 1.0e5 yr), which the current Mandyoc does not have: here sp_mode = diffusion with sp_d_c = 1.0 and sea_level = -1000 m, as in the notebook. -->
+<!-- The Mandyoc of ggciag reads sediment_layers.txt whenever sp_surface_processes is True, so tapioca adds one layer of zero thickness of the sediments (template below the domain, the material of svg_scenarios/rifting_sedimentation) every dt_sed = 10 Myr. -->
+<!-- Difference from Mandyoc: tapioca computes its own initial temperature (conduction with the LAB at 1350 oC; Mandyoc: 1300 oC at the LAB, Tp = 1262 oC and 500 Myr of diffusion). The velocity of the rifting regime is the one of the notebook: constant down to 150 km below the surface (lithosphere + 20 km), the return flow below it and no velocity in the top 30 km of the sticky air. -->
+<!-- 1 user unit = 1 km; page = model domain. Written by make_classical_examples.py. -->
+<svg
+   width="1600mm"
+   height="300mm"
+   viewBox="0 0 1600 300"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg">
+  <g inkscape:groupmode="layer" id="layer1" inkscape:label="lithologies">
+    <rect id="asthenosphere" inkscape:label="asthenosphere" x="0" y="0" width="1600" height="300" style="fill:#cfe2cd;stroke:none">
+      <title id="title1">Asthenosphere</title>
+      <desc id="desc1">wet olivine
+C = 1.0
+rho = 3378.0
+H = 0.0
+A = 1.393e-14
+n = 3.0
+Q = 429.0e3
+V = 15.0e-6</desc>
+    </rect>
+    <rect id="lithospheric_mantle" inkscape:label="lithospheric_mantle" x="0" y="0" width="1600" height="170" style="fill:#9bc29b;stroke:none">
+      <title id="title2">Lithospheric mantle</title>
+      <desc id="desc2">dry olivine
+C = 1.0
+rho = 3354.0
+H = 9.0e-12
+h = 90.0 km
+A = 2.4168e-15
+n = 3.5
+Q = 540.0e3
+V = 25.0e-6</desc>
+    </rect>
+    <rect id="lower_crust" inkscape:label="lower_crust" x="0" y="0" width="1600" height="80" style="fill:#f0d1bc;stroke:none">
+      <title id="title3">Lower crust</title>
+      <desc id="desc3">wet quartz
+C = 1.0
+rho = 2800.0
+H = 0.8e-6 / 2800.0
+h = 20 km
+A = 8.574e-28
+n = 4.0
+Q = 222.0e3
+V = 0.0</desc>
+    </rect>
+    <rect id="upper_crust" inkscape:label="upper_crust" x="0" y="0" width="1600" height="60" style="fill:#e49c7c;stroke:none">
+      <title id="title4">Upper crust</title>
+      <desc id="desc4">wet quartz
+C = 1.0
+rho = 2700.0
+H = 2.5e-6 / 2700.0
+h = 20 km
+A = 8.574e-28
+n = 4.0
+Q = 222.0e3
+V = 0.0</desc>
+    </rect>
+    <rect id="air" inkscape:label="air" x="0" y="0" width="1600" height="40" style="fill:#ffffff;stroke:none">
+      <title id="title5">Sticky air</title>
+      <desc id="desc5">air
+C = 1.0
+rho = 1.0
+H = 0.0
+h = 40.0 km
+A = 1e-18
+n = 1.0
+Q = 0.0
+V = 0.0</desc>
+    </rect>
+    <rect id="weak_seed" inkscape:label="weak_seed" x="747" y="90" width="4" height="6" style="fill:#000000;stroke:none">
+      <title id="title6">Weak seed</title>
+      <desc id="desc6">dry olivine
+C = 0.1
+rho = 3354.0
+H = 9.0e-12
+h = 6.0 km
+A = 2.4168e-15
+n = 3.5
+Q = 540.0e3
+V = 25.0e-6</desc>
+    </rect>
+  </g>
+  <g inkscape:groupmode="layer" id="layer_templates" inkscape:label="templates">
+    <!-- outside the domain: materials of the layers of zero thickness added by tapioca -->
+    <rect id="sediments" inkscape:label="sediments" x="0" y="310" width="120" height="20" style="fill:#e8c96b;stroke:none">
+      <title id="title7">Sediments</title>
+      <desc id="desc7">wet quartz
+C = 1.0
+rho = 2400.0
+H = 5.417e-10
+A = 8.574e-28
+n = 4.0
+Q = 222.0e3
+V = 0.0
+k = 7.0e-7
+cohesion_min = 5.0e6
+cohesion_max = 10.0e6
+friction_angle_min = 5.0
+friction_angle_max = 15.0</desc>
+    </rect>
+  </g>
+  <g inkscape:groupmode="layer" id="layer_setup" inkscape:label="domain">
+    <rect id="setup" inkscape:label="setup" x="0" y="0" width="1600" height="300" style="fill:none;stroke:#ff0000;stroke-width:1.6">
+      <title id="title_setup">Model setup</title>
+      <desc id="desc_setup">Lx = 1600 km
+Lz = 300 km
+Nx = 801
+Nz = 151
+regime = rifting
+velocity = 1 cm/yr
+moving_boundary = right
+time_max = 100 Myr
+magmatism = off
+sp_surface_processes = True
+sp_mode = diffusion
+sp_d_c = 1.0
+sea_level = -1000.0
+sediment_layer = sediments
+dt_sed = 10 Myr
+denok = 1.0e-15
+Xi_min = 1.0e-7
+sp_surface_tracking = True
+step_max = 5000
+step_print = 10
+rheology_model = 9</desc>
+    </rect>
+  </g>
+</svg>

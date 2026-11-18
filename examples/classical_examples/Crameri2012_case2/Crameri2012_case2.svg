@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Crameri2012_case2 of Mandyoc (examples/Crameri2012_case2): rising plume below a lid, Crameri et al. (2012), case 2. -->
+<!-- Mantle (C = 1, rho = 3300), plume of 100 km in diameter with its centre 300 km above the base (C = 0.1, rho = 3200), lid 100 km (C = 100), sticky air 150 km (C = 0.01, rho = 0). Constant viscosity (rheology_model = 0, viscosity_reference = 1e21 Pa s), isothermal (temperature_difference = 0), free slip at the sides and no slip at the base, as in param.txt of the notebook. -->
+<!-- 1 user unit = 1 km; page = model domain. Written by make_classical_examples.py. -->
+<svg
+   width="2800mm"
+   height="850mm"
+   viewBox="0 0 2800 850"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg">
+  <g inkscape:groupmode="layer" id="layer1" inkscape:label="lithologies">
+    <rect id="asthenosphere" inkscape:label="asthenosphere" x="0" y="0" width="2800" height="850" style="fill:#cfe2cd;stroke:none">
+      <title id="title1">Mantle</title>
+      <desc id="desc1">wet olivine
+C = 1.0
+rho = 3300.0
+H = 0.0
+A = 0.0
+n = 0.0
+Q = 0.0
+V = 0.0</desc>
+    </rect>
+    <rect id="lid" inkscape:label="lid" x="0" y="0" width="2800" height="250" style="fill:#8fa9c9;stroke:none">
+      <title id="title2">Lid</title>
+      <desc id="desc2">wet olivine
+C = 100.0
+rho = 3300.0
+H = 0.0
+h = 100 km
+A = 0.0
+n = 0.0
+Q = 0.0
+V = 0.0</desc>
+    </rect>
+    <rect id="air" inkscape:label="air" x="0" y="0" width="2800" height="150" style="fill:#ffffff;stroke:none">
+      <title id="title3">Sticky air</title>
+      <desc id="desc3">air
+C = 0.01
+rho = 0.0
+H = 0.0
+h = 150 km
+A = 0.0
+n = 0.0
+Q = 0.0
+V = 0.0</desc>
+    </rect>
+    <circle id="plume" inkscape:label="plume" cx="1400" cy="550" r="50" style="fill:#d9534f;stroke:none">
+      <title id="title4">Plume</title>
+      <desc id="desc4">wet olivine
+C = 0.1
+rho = 3200.0
+H = 0.0
+A = 0.0
+n = 0.0
+Q = 0.0
+V = 0.0</desc>
+    </circle>
+  </g>
+  <g inkscape:groupmode="layer" id="layer_setup" inkscape:label="domain">
+    <rect id="setup" inkscape:label="setup" x="0" y="0" width="2800" height="850" style="fill:none;stroke:#ff0000;stroke-width:2.8">
+      <title id="title_setup">Model setup</title>
+      <desc id="desc_setup">Lx = 2800 km
+Lz = 850 km
+Nx = 281
+Nz = 169
+regime = quiescence
+time_max = 21 Myr
+denok = 1.0e-15
+particles_per_element = 600
+particles_per_element_x = 6
+particles_per_element_z = 100
+Xi_min = 1.0e-14
+random_initial_strain = 0.0
+initial_dynamic_range = False
+basal_heat = -1.0
+step_max = 7000
+step_print = 10
+sub_division_time_step = 1.0
+initial_print_step = 2
+viscosity_reference = 1.0e21
+viscosity_max = 1.0e23
+viscosity_min = 1.0e19
+temperature_from_ascii = False
+sticky_blanket_air = False
+temperature_difference = 0.0
+non_linear_method = off
+adiabatic_component = off
+bot_tangential_velocity = fixed
+left_tangential_velocity = free
+right_tangential_velocity = free
+rheology_model = 0
+T_initial = 0</desc>
+    </rect>
+  </g>
+</svg>

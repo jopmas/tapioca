@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- slab_detachment of Mandyoc (examples/slab_detachment): Schmalholz (2011). -->
+<!-- Lithosphere 80 km (rho = 3300, n = 4) with a vertical slab 80 km wide and 250 km long at the centre, over a linear mantle (rho = 3150). No sticky air (sticky_air = off): tapioca adds one of zero thickness at the top. -->
+<!-- Isothermal: temperature_difference = 0, so Mandyoc caps the temperature of input_temperature_0.txt at 0 oC, as the T = 0 of the notebook. -->
+<!-- 1 user unit = 1 km; page = model domain. Written by make_classical_examples.py. -->
+<svg
+   width="1000mm"
+   height="660mm"
+   viewBox="0 0 1000 660"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg">
+  <g inkscape:groupmode="layer" id="layer1" inkscape:label="lithologies">
+    <rect id="asthenosphere" inkscape:label="asthenosphere" x="0" y="0" width="1000" height="660" style="fill:#cfe2cd;stroke:none">
+      <title id="title1">Mantle</title>
+      <desc id="desc1">wet olivine
+C = 1.0
+rho = 3150.0
+H = 0.0
+A = 1.0e-21
+n = 1.0
+Q = 0.0
+V = 0.0</desc>
+    </rect>
+    <rect id="lithosphere" inkscape:label="lithosphere" x="0" y="0" width="1000" height="80" style="fill:#9bc29b;stroke:none">
+      <title id="title2">Lithosphere</title>
+      <desc id="desc2">dry olivine
+C = 1.0
+rho = 3300.0
+H = 0.0
+A = 1.96438e-47
+n = 4.0
+Q = 0.0
+V = 0.0</desc>
+    </rect>
+    <rect id="slab" inkscape:label="lithosphere" x="459.5" y="0" width="80" height="330" style="fill:#9bc29b;stroke:none">
+      <title id="title3">Lithosphere</title>
+      <desc id="desc3">dry olivine
+C = 1.0
+rho = 3300.0
+H = 0.0
+A = 1.96438e-47
+n = 4.0
+Q = 0.0
+V = 0.0</desc>
+    </rect>
+  </g>
+  <g inkscape:groupmode="layer" id="layer_setup" inkscape:label="domain">
+    <rect id="setup" inkscape:label="setup" x="0" y="0" width="1000" height="660" style="fill:none;stroke:#ff0000;stroke-width:1">
+      <title id="title_setup">Model setup</title>
+      <desc id="desc_setup">Lx = 1000 km
+Lz = 660 km
+Nx = 1001
+Nz = 601
+sticky_air = off
+regime = quiescence
+time_max = 25 Myr
+gravity_acceleration = 9.81
+min_thickness = 0
+denok = 1.0e-15
+Xi_min = 1.0e-7
+sp_surface_tracking = False
+step_max = 5000
+dt_max = 1.0e6
+step_print = 10
+initial_print_step = 1
+viscosity_reference = 3.0e22
+viscosity_min = 1.0e21
+viscosity_mean_method = harmonic
+temperature_difference = 0.0
+adiabatic_component = off
+radiogenic_component = off
+plasticity = off
+rheology_model = 9</desc>
+    </rect>
+  </g>
+</svg>

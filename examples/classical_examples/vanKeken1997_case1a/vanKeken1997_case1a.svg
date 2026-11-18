@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- vanKeken1997_case1a of Mandyoc (examples/vanKeken1997_case1a): Rayleigh-Taylor instability, van Keken et al. (1997), case 1a. -->
+<!-- Interface at z = -0.8 Lz + 0.02 Lz cos(pi x / Lx): light layer (rho = -1000) below, dense layer (rho = 0) above, the same viscosity (C = 1). No sticky air (sticky_air = off). Isothermal, constant viscosity, no slip at the top and the base, as in param.txt of the notebook (time_max = 1.4e11, written in s in the notebook). -->
+<!-- 1 user unit = 1 km; page = model domain. Written by make_classical_examples.py. -->
+<svg
+   width="91.42mm"
+   height="100mm"
+   viewBox="0 0 91.42 100"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg">
+  <g inkscape:groupmode="layer" id="layer1" inkscape:label="lithologies">
+    <rect id="asthenosphere" inkscape:label="asthenosphere" x="0" y="0" width="91.42" height="100" style="fill:#cfe2cd;stroke:none">
+      <title id="title1">Light layer</title>
+      <desc id="desc1">wet olivine
+C = 1.0
+rho = -1000.0
+H = 0.0
+A = 0.0
+n = 0.0
+Q = 0.0
+V = 0.0</desc>
+    </rect>
+    <path id="dense_layer" inkscape:label="dense_layer" d="M 0.0000,0.0000 L 91.4200,0.0000 L 91.4200,82.0000 L 90.9629,81.9998 L 90.5058,81.9990 L 90.0487,81.9978 L 89.5916,81.9961 L 89.1345,81.9938 L 88.6774,81.9911 L 88.2203,81.9879 L 87.7632,81.9842 L 87.3061,81.9800 L 86.8490,81.9754 L 86.3919,81.9702 L 85.9348,81.9646 L 85.4777,81.9584 L 85.0206,81.9518 L 84.5635,81.9447 L 84.1064,81.9372 L 83.6493,81.9291 L 83.1922,81.9206 L 82.7351,81.9116 L 82.2780,81.9021 L 81.8209,81.8922 L 81.3638,81.8818 L 80.9067,81.8709 L 80.4496,81.8596 L 79.9925,81.8478 L 79.5354,81.8355 L 79.0783,81.8228 L 78.6212,81.8097 L 78.1641,81.7961 L 77.7070,81.7820 L 77.2499,81.7675 L 76.7928,81.7526 L 76.3357,81.7373 L 75.8786,81.7215 L 75.4215,81.7053 L 74.9644,81.6887 L 74.5073,81.6716 L 74.0502,81.6542 L 73.5931,81.6363 L 73.1360,81.6180 L 72.6789,81.5994 L 72.2218,81.5803 L 71.7647,81.5609 L 71.3076,81.5410 L 70.8505,81.5208 L 70.3934,81.5002 L 69.9363,81.4793 L 69.4792,81.4579 L 69.0221,81.4363 L 68.5650,81.4142 L 68.1079,81.3918 L 67.6508,81.3691 L 67.1937,81.3460 L 66.7366,81.3226 L 66.2795,81.2989 L 65.8224,81.2748 L 65.3653,81.2505 L 64.9082,81.2258 L 64.4511,81.2008 L 63.9940,81.1756 L 63.5369,81.1500 L 63.0798,81.1242 L 62.6227,81.0980 L 62.1656,81.0717 L 61.7085,81.0450 L 61.2514,81.0181 L 60.7943,80.9909 L 60.3372,80.9635 L 59.8801,80.9359 L 59.4230,80.9080 L 58.9659,80.8799 L 58.5088,80.8516 L 58.0517,80.8230 L 57.5946,80.7943 L 57.1375,80.7654 L 56.6804,80.7362 L 56.2233,80.7069 L 55.7662,80.6775 L 55.3091,80.6478 L 54.8520,80.6180 L 54.3949,80.5881 L 53.9378,80.5580 L 53.4807,80.5277 L 53.0236,80.4974 L 52.5665,80.4669 L 52.1094,80.4363 L 51.6523,80.4056 L 51.1952,80.3748 L 50.7381,80.3439 L 50.2810,80.3129 L 49.8239,80.2818 L 49.3668,80.2507 L 48.9097,80.2195 L 48.4526,80.1882 L 47.9955,80.1569 L 47.5384,80.1256 L 47.0813,80.0942 L 46.6242,80.0628 L 46.1671,80.0314 L 45.7100,80.0000 L 45.2529,79.9686 L 44.7958,79.9372 L 44.3387,79.9058 L 43.8816,79.8744 L 43.4245,79.8431 L 42.9674,79.8118 L 42.5103,79.7805 L 42.0532,79.7493 L 41.5961,79.7182 L 41.1390,79.6871 L 40.6819,79.6561 L 40.2248,79.6252 L 39.7677,79.5944 L 39.3106,79.5637 L 38.8535,79.5331 L 38.3964,79.5026 L 37.9393,79.4723 L 37.4822,79.4420 L 37.0251,79.4119 L 36.5680,79.3820 L 36.1109,79.3522 L 35.6538,79.3225 L 35.1967,79.2931 L 34.7396,79.2638 L 34.2825,79.2346 L 33.8254,79.2057 L 33.3683,79.1770 L 32.9112,79.1484 L 32.4541,79.1201 L 31.9970,79.0920 L 31.5399,79.0641 L 31.0828,79.0365 L 30.6257,79.0091 L 30.1686,78.9819 L 29.7115,78.9550 L 29.2544,78.9283 L 28.7973,78.9020 L 28.3402,78.8758 L 27.8831,78.8500 L 27.4260,78.8244 L 26.9689,78.7992 L 26.5118,78.7742 L 26.0547,78.7495 L 25.5976,78.7252 L 25.1405,78.7011 L 24.6834,78.6774 L 24.2263,78.6540 L 23.7692,78.6309 L 23.3121,78.6082 L 22.8550,78.5858 L 22.3979,78.5637 L 21.9408,78.5421 L 21.4837,78.5207 L 21.0266,78.4998 L 20.5695,78.4792 L 20.1124,78.4590 L 19.6553,78.4391 L 19.1982,78.4197 L 18.7411,78.4006 L 18.2840,78.3820 L 17.8269,78.3637 L 17.3698,78.3458 L 16.9127,78.3284 L 16.4556,78.3113 L 15.9985,78.2947 L 15.5414,78.2785 L 15.0843,78.2627 L 14.6272,78.2474 L 14.1701,78.2325 L 13.7130,78.2180 L 13.2559,78.2039 L 12.7988,78.1903 L 12.3417,78.1772 L 11.8846,78.1645 L 11.4275,78.1522 L 10.9704,78.1404 L 10.5133,78.1291 L 10.0562,78.1182 L 9.5991,78.1078 L 9.1420,78.0979 L 8.6849,78.0884 L 8.2278,78.0794 L 7.7707,78.0709 L 7.3136,78.0628 L 6.8565,78.0553 L 6.3994,78.0482 L 5.9423,78.0416 L 5.4852,78.0354 L 5.0281,78.0298 L 4.5710,78.0246 L 4.1139,78.0200 L 3.6568,78.0158 L 3.1997,78.0121 L 2.7426,78.0089 L 2.2855,78.0062 L 1.8284,78.0039 L 1.3713,78.0022 L 0.9142,78.0010 L 0.4571,78.0002 L 0.0000,78.0000 Z" style="fill:#9bc29b;stroke:none">
+      <title id="title2">Dense layer</title>
+      <desc id="desc2">wet olivine
+C = 1.0
+rho = 0.0
+H = 0.0
+A = 0.0
+n = 0.0
+Q = 0.0
+V = 0.0</desc>
+    </path>
+  </g>
+  <g inkscape:groupmode="layer" id="layer_setup" inkscape:label="domain">
+    <rect id="setup" inkscape:label="setup" x="0" y="0" width="91.42" height="100" style="fill:none;stroke:#ff0000;stroke-width:0.1">
+      <title id="title_setup">Model setup</title>
+      <desc id="desc_setup">Lx = 91.42 km
+Lz = 100 km
+Nx = 81
+Nz = 81
+sticky_air = off
+regime = quiescence
+time_max = 140000 Myr
+min_thickness = 0
+particles_per_element_x = 0
+particles_per_element_z = 0
+denok = 1.0e-15
+particles_per_element = 1100
+particles_perturb_factor = 0.0
+rtol = 1.0e-5
+Xi_min = 1.0e-14
+random_initial_strain = 0.0
+initial_dynamic_range = False
+basal_heat = -1.0
+sp_surface_tracking = False
+step_max = 4000
+dt_max = 1000.0e6
+step_print = 20
+sub_division_time_step = 1.0
+viscosity_reference = 1.0e21
+viscosity_min = 1.0e17
+viscosity_mean_method = harmonic
+temperature_from_ascii = False
+geoq_fac = 1.0
+temperature_difference = 0.0
+non_linear_method = off
+adiabatic_component = off
+radiogenic_component = off
+top_tangential_velocity = fixed
+bot_tangential_velocity = fixed
+left_tangential_velocity = free
+right_tangential_velocity = free
+left_temperature = free
+right_temperature = free
+rheology_model = 0
+T_initial = 0</desc>
+    </rect>
+  </g>
+</svg>

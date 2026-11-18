@@ -110,7 +110,8 @@ class SVGChecks(InputChecks):
         '''Check the stack of layers (bottom to top): an asthenosphere and the sticky air at the top.'''
         if layers[-1].rheology_name != 'air':
             self._fail(f"The top layer of {svg_file} must be the sticky air, with 'air' in the first line of its "
-                       f"description (found '{layers[-1].layer_label}' with {layers[-1].rheology_name}).")
+                       f"description (found '{layers[-1].layer_label}' with {layers[-1].rheology_name}), or set "
+                       f"sticky_air = off for a scenario without sticky air.")
         if not any(layer.layer_label == asthenosphere_label for layer in layers):
             self._fail(f"No shape labelled '{asthenosphere_label}' in {svg_file}.")
 

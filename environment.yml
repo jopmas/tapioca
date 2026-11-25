@@ -2,7 +2,7 @@
 # Includes PETSc 3.24.5 (OpenMPI build) to build and run Mandyoc
 # in the same environment, without activating another one.
 #
-# Versions taken on 2026-10-28, and PETSc and the compiler on 2026-11-25 (macOS arm64, conda-forge).
+# Versions taken on 2026-10-28, and PETSc, the compiler and zarr on 2026-11-25 (macOS arm64, conda-forge).
 #
 #   conda env create -f environment.yml
 #   conda activate tapioca
@@ -24,6 +24,7 @@ dependencies:
   - matplotlib=3.11.2
   - h5py=3.16.0=mpi_openmpi_*
   - h5netcdf=1.8.1
+  - zarr=3.4.2
   - shapely=2.2.0
   - numba=0.68.0
   - dask=2026.8.0

@@ -8,7 +8,8 @@ import os
 __all__ = ["REGIMES", "MANTLE_RHEOLOGIES", "SYSTEMS", "DEFAULT_PARAMS", "SP_MODES", "SEDIMENTATION_MODES", "SP_PARAMS", "SP_FORMATS",
            "ORGANIZE_SCRIPT", "RUN_SCRIPT", "POST_PROCESSING_SCRIPT", "NO_POST_PROCESSING_SCRIPT",
            "RUN_LAUNCHER", "PETSC_ENV", "PETSC_ENV_LOOKUP", "ZIP_SCRIPT", "HYPATIA", "HYPATIA_SCRIPT",
-           "HYPATIA_CONDA_SCRIPT"]
+           "HYPATIA_CONDA_SCRIPT", "CODES", "MANDYOCJLL_RUN_SCRIPT", "MANDYOCJLL_HYPATIA_SCRIPT",
+           "MANDYOCJLL_POST_PROCESSING_SCRIPT", "MANDYOCJLL_UNSUPPORTED"]
 
 REGIMES:list = ['rifting', 'compression', 'accordion', 'quiescence']
 """list: Kinematic regimes of the SVG scenarios."""
@@ -16,6 +17,10 @@ MANTLE_RHEOLOGIES:list = ['wet_olivine', 'dry_olivine']
 """list: Rheologies of the lithospheric mantle (its thickness is the reference of the velocity with h_v_reference = 'lithospheric_mantle')."""
 SYSTEMS:list = ['linux', 'mac', 'hypatia']
 """list: Systems of the run scripts (hypatia: SLURM job on Hypatia, the cluster of the group)."""
+CODES:list = ['mandyoc', 'mandyocjll']
+"""list: Codes of the run scripts: Mandyoc (C++) or mandyocjll (its port to Julia, zarr outputs)."""
+MANDYOCJLL_UNSUPPORTED:tuple = ('sp_surface_processes', 'magmatism', 'nondimensionalization', 'multi_velocity', 'plot_sediment')
+"""tuple: Switches of param.txt that stop mandyocjll when they are on (with RK4, sp_mode, basal_heat and 3D)."""
 
 SP_MODES:list = ['none', 'diffusion', 'sedimentation_only', 'sedimentation_rate_limited', 'theunissen_sedimentation']
 """list: Modes of surface processes of Mandyoc (sp_mode of param.txt)."""
@@ -43,6 +48,8 @@ PETSC_ARCH=${PETSC_ARCH-@PETSC_ARCH@}
 MANDYOC=${MANDYOC:-@MANDYOC@}
 NUMBER_OF_CORES=@NCORES@
 MANDYOC_OPTIONS="@MANDYOC_OPTIONS@"
+# One OpenMP (BLAS) thread per MPI process: more threads compete for the cores (5x slower with the PETSc of conda)
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
 
 echo "mpirun: $PETSC_DIR/$PETSC_ARCH/bin/mpirun"
 touch FD.out
@@ -157,6 +164,8 @@ PETSC_ARCH='@PETSC_ARCH@'
 MANDYOC=${MANDYOC:-@MANDYOC@}
 NUMBER_OF_CORES=${SLURM_NTASKS:-@NCORES@}
 MANDYOC_OPTIONS="@MANDYOC_OPTIONS@"
+# One OpenMP (BLAS) thread per MPI process: more threads compete for the cores (5x slower with the PETSc of conda)
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
 
 touch FD.out
 mpirun -n $NUMBER_OF_CORES --map-by :OVERSUBSCRIBE $MANDYOC $MANDYOC_OPTIONS | tee FD.out
@@ -177,6 +186,49 @@ else
     echo "conda not found: post-processing with the current Python."
 fi
 '''
+
+#Run script of mandyocjll (code = mandyocjll), the port of Mandyoc to Julia. It starts the MPI processes itself (-n)
+#with the MPI it uses, so it needs no mpirun of PETSc, and writes one .zarr per variable (no 0_organize_outputs.sh).
+_MANDYOCJLL_RUN = '''# MANDYOCJLL (the executable) set in the environment overrides the value below.
+MANDYOCJLL=${MANDYOCJLL:-@MANDYOCJLL@}
+NUMBER_OF_CORES=@CORES@
+MANDYOC_OPTIONS="@MANDYOC_OPTIONS@"
+# One OpenMP (BLAS) thread per MPI process: more threads compete for the cores (5x slower with the PETSc of conda)
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
+
+# Stops here, without the post-processing, if the run fails
+set -o pipefail
+@LAUNCHER@"$MANDYOCJLL" -n $NUMBER_OF_CORES $MANDYOC_OPTIONS 2>&1 | tee FD.out || exit 1
+'''
+MANDYOCJLL_RUN_SCRIPT = '''#!/usr/bin/env bash
+# Runs mandyocjll (Mandyoc in Julia), which writes one .zarr per variable. Created by tapioca.
+''' + _MANDYOCJLL_RUN.replace('@CORES@', '@NCORES@') + '''@POST_PROCESSING@'''
+
+#The same on Hypatia: the #SBATCH lines and the modules of HYPATIA_SCRIPT
+MANDYOCJLL_HYPATIA_SCRIPT = HYPATIA_SCRIPT[:HYPATIA_SCRIPT.index('# Runs Mandyoc on Hypatia')] + '''\
+# Runs mandyocjll (Mandyoc in Julia) on Hypatia (sbatch run_hypatia.sh), which writes one .zarr per variable.
+# Created by tapioca.
+module purge
+@MODULES@
+''' + _MANDYOCJLL_RUN.replace('@CORES@', '${SLURM_NTASKS:-@NCORES@}') + '''@CONDA@@POST_PROCESSING@'''
+
+#Post-processing of the runs of mandyocjll: the .nc files with tools/zarr2nc.py of mandyocjll, then the snapshots, the
+#video and the zip of POST_PROCESSING_SCRIPT. The .zarr outputs are kept.
+MANDYOCJLL_POST_PROCESSING_SCRIPT = '''
+# Post-processing: .nc files (tools/zarr2nc.py of mandyocjll), snapshots and video of the scenario (plot_snapshots.py
+# and frames_generator.py of post_processing) and zip of the scenario. The .zarr outputs are kept.
+# MANDYOCJLL_DIR, POST_PROCESSING_DIR and PYTHON set in the environment override the values below.
+# A step is skipped, with a message, if what it needs is not found.
+MANDYOCJLL_DIR=${MANDYOCJLL_DIR:-$(dirname "$(dirname "$MANDYOCJLL")")}
+POST_PROCESSING_DIR=${POST_PROCESSING_DIR:-@POST_PROCESSING_DIR@}
+PYTHON=${PYTHON:-python}
+
+if [ -f "$MANDYOCJLL_DIR/tools/zarr2nc.py" ]; then
+    "$PYTHON" "$MANDYOCJLL_DIR/tools/zarr2nc.py" "$PWD"
+else
+    echo "$MANDYOCJLL_DIR/tools/zarr2nc.py not found: the .nc files were not created."
+fi
+''' + POST_PROCESSING_SCRIPT[POST_PROCESSING_SCRIPT.index('\nif [ -f lithology.nc ]'):POST_PROCESSING_SCRIPT.index('\n# Removes the output files')]
 
 #caffeinate keeps the Mac awake while Mandyoc runs
 RUN_LAUNCHER = {'linux': '', 'mac': 'caffeinate -i '}
@@ -254,6 +306,7 @@ patterns=(
 "Phi"
 "dPhi"
 "X_depletion"
+"*.zarr"
 "*.bin*.txt"
 "bc*-1.txt"
 "*.log"

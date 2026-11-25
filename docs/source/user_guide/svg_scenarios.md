@@ -33,7 +33,9 @@ It also receives the scripts to run the scenario (`--no-scripts` skips them):
   `$PETSC_DIR/$PETSC_ARCH/bin/mpirun` and then moves the outputs to one folder per variable with
   `0_organize_outputs.sh`. On the Mac, `caffeinate` keeps the computer awake during the run. `PETSC_DIR`,
   `PETSC_ARCH` and `MANDYOC` (the executable) set in the environment override the values of the script;
-  `--ncores` and `--mandyoc-options` set the number of MPI processes and the options of Mandyoc. After the run,
+  `--ncores` and `--mandyoc-options` set the number of MPI processes and the options of Mandyoc. Each MPI process
+  uses one OpenMP thread (`OMP_NUM_THREADS=1`, unless it is set): with the PETSc of conda, more threads make the run
+  several times slower. After the run,
   the script post-processes the scenario (`--no-post-processing` skips it):
   1. creates the `.nc` files with `meshes2netcdf.jl` and, if there is a `steps/` folder, `particles2netcdf.jl` with
      the last step as reference step (`julia -t <ncores>`);
@@ -54,6 +56,29 @@ It also receives the scripts to run the scenario (`--no-scripts` skips them):
 - `0_organize_outputs.sh`: copy of `src/postrunning/0_organize_outputs.sh`;
 - `zipper.sh`: zips the inputs and the outputs in `<folder>.zip`, skipping the files already in the zip,
   so it can be run again to add new outputs.
+
+The scripts may call mandyocjll instead of Mandyoc (see [below](#run-with-mandyocjll)).
+
+
+(run-with-mandyocjll)=
+## Run with mandyocjll
+
+`code = mandyocjll` in the `setup` shape (or `--code mandyocjll`, which overrides it) writes run scripts that call
+mandyocjll, the port of Mandyoc to Julia, instead of Mandyoc, for any `--system` (`run_linux.sh`, `run_mac.sh` or
+`run_hypatia.sh`):
+
+```bash
+tapioca-svg rifting.svg -o rifting --code mandyocjll --system mac --mandyoc-options="-seed 0,5 -strain_seed 0.0,1.0"
+```
+
+- the script runs `$MANDYOCJLL -n <ncores>` (default: `$HOME/opt/mandyocjll/bin/mandyocjll`), which starts the MPI
+  processes itself, with the MPI it uses. PETSc is the one of its `LocalPreferences.toml`, so `PETSC_DIR` and
+  `PETSC_ARCH` are not used;
+- the outputs are one `.zarr` per variable, so there is no `0_organize_outputs.sh`. The post-processing creates the
+  `.nc` files with `tools/zarr2nc.py` of mandyocjll, makes the snapshots and the video and zips the scenario; the
+  `.zarr` outputs are kept. If the run fails, the script stops before it;
+- the input files are the same for both codes. mandyocjll is 2D and does not have every option of Mandyoc: tapioca
+  warns about the options of the scenario that will stop it (surface processes, magmatism, nondimensionalization, ...).
 
 
 (run-on-hypatia)=
@@ -160,6 +185,7 @@ thermal_expansion_coefficient = 3.28e-5
 gravity_acceleration = 10
 preset_initial_temperature = ../preliminary
 custom_veloc_field = build_veloc.py
+code = mandyoc
 temperature_solver = 2D
 ```
 
@@ -189,6 +215,7 @@ value after a space or `=` (`--heat-capacity 700`, `--heat_capacity=700`). Defau
 | `water_layer` | none | label (or ID) of the unit drawn as water, right below the sticky air |
 | `preset_initial_temperature` | none | folder of a preliminary scenario (see below) |
 | `custom_veloc_field` | none | Python script that builds the velocity field instead of the kinematic regime (see below) |
+| `code` | `mandyoc` | code that the run script calls: `mandyoc` or `mandyocjll` (see [above](#run-with-mandyocjll)) |
 | `temperature_solver` | `2D` | `2D` or `columns` (see below) |
 | `min_thickness` | 1 km | thin layers left by overlapping shapes (see above); `0 km` keeps them |
 

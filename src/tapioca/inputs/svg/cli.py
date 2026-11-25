@@ -11,7 +11,7 @@ Command line interface of the scenario builder:
                 [--sp-surface-processes True] [--sp-mode theunissen_sedimentation] [--sp-format ggciag] [--sediment-layer sediments]
                 [--ti-sed 0] [--tf-sed 70] [--dt-sed 1] [--sedimentation-rate "0 Myr: 25, 20 Myr: 50"] [--Ld 35000] [--base-level -500]
                 [--min-thickness 1] [--sampling 100] [--no-plots]
-                [--system linux] [--ncores 20] [--job-name NAME] [--mail-user E-MAIL] [--mandyoc-options="-seed 0,5,8 -strain_seed 0.0,1.0,1.0"] [--no-scripts] [--no-zip]
+                [--code mandyoc] [--system linux] [--ncores 20] [--job-name NAME] [--mail-user E-MAIL] [--mandyoc-options="-seed 0,5,8 -strain_seed 0.0,1.0,1.0"] [--no-scripts] [--no-zip]
                 [--no-post-processing]
 
 The options override the settings of the SVG (description of the shape labelled "setup"). The three thermal
@@ -22,7 +22,7 @@ import argparse
 import sys
 
 from .reader import SVGInputError
-from ._variables import REGIMES, SYSTEMS, SP_MODES, SP_FORMATS
+from ._variables import CODES, REGIMES, SYSTEMS, SP_MODES, SP_FORMATS
 from .scenario import SVGScenario
 
 __all__ = ["main"]
@@ -99,6 +99,8 @@ def main(argv=None):
     parser.add_argument('--sampling', type=float, help='vertical sampling of the SVG to locate the interfaces [m] (default: from '
                                                        'the SVG, or 100 m)')
     parser.add_argument('--no-plots', action='store_true', help='do not create numerical_setup.png and initial_temperature.png')
+    parser.add_argument('--code', choices=CODES, help='code that the run script calls: mandyoc (C++) or mandyocjll (its port to '
+                                                      'Julia) (default: from the SVG, or mandyoc)')
     parser.add_argument('--system', choices=SYSTEMS, help='system of the run script of Mandyoc; hypatia: SLURM job on the '
                                                           'cluster of the group (default: the system that runs tapioca)')
     parser.add_argument('--ncores', type=int, help='number of MPI processes in the run script (default: number of cores of this '
@@ -125,7 +127,7 @@ def main(argv=None):
                                gravity_acceleration=args.gravity_acceleration,
                                preset_initial_temperature=args.preset_initial_temperature,
                                preset_temperature_mode=args.preset_temperature_mode, preset_time=args.preset_time,
-                               custom_veloc_field=args.custom_veloc_field,
+                               custom_veloc_field=args.custom_veloc_field, code=args.code,
                                temperature_solver=args.temperature_solver, water_layer=args.water_layer,
                                magmatic_layer=args.magmatic_layer,
                                sp_surface_processes=args.sp_surface_processes, sp_mode=args.sp_mode, sp_format=args.sp_format,

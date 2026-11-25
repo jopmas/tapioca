@@ -73,6 +73,7 @@ magmatism_Ts0 (e.g. 1080, in oC), heat_capacity (e.g. 1250, in J/kg/K), thermal_
 preliminary scenario whose final thermal state is used as initial temperature), preset_temperature_mode
 (profile or field), preset_time (e.g. 10 Myr) and custom_veloc_field
 (Python script that builds the velocity field instead of the kinematic regime, see SVGScenario.build_velocity).
+code (mandyoc or mandyocjll) is the code that the run script calls.
 The surface processes are also settings of the experiment: sp_surface_processes (True or False), sp_mode (e.g.
 theunissen_sedimentation), the layers of sediments deposited by Mandyoc (sediment_layer, ti_sed, tf_sed, dt_sed,
 sedimentation_rate, Ld and base_level, written to SP_vc.txt and base_level.txt, or with sp_format = ggciag to
@@ -162,7 +163,7 @@ EXPERIMENT_KEYS = ("regime", "velocity", "moving_boundary", "time_max", "quiesce
                    "magmatism", "magmatism_extraction", "magmatism_Ts0", "preset_initial_temperature",
                    "preset_temperature_mode", "preset_time", "temperature_solver", "water_layer", "magmatic_layer",
                    "heat_capacity", "thermal_expansion_coefficient", "gravity_acceleration",
-                   "custom_veloc_field",
+                   "custom_veloc_field", "code",
                    # surface processes and sedimentation (see SVGScenario)
                    "sp_surface_processes", "sp_mode", "sp_format", "sediment_layer", "ti_sed", "tf_sed", "dt_sed",
                    "sedimentation_rate", "Ld", "base_level") + SP_PARAMS  # settings of the experiment in the domain description

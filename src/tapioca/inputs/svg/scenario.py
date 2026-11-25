@@ -31,6 +31,7 @@ experiment:
     preset_time = 10 Myr
     custom_veloc_field = build_veloc.py        (Python script with build_velocity(scenario))
     temperature_solver = 2D                    (2D or columns)
+    code = mandyoc                             (mandyoc or mandyocjll: code that the run script calls)
     min_thickness = 1 km
     water_layer = water                        (drawn below the air, or a template outside the domain)
     sp_surface_processes = True                (surface processes, see below)
@@ -103,7 +104,8 @@ from ._variables import (REGIMES, MANTLE_RHEOLOGIES, SYSTEMS, DEFAULT_PARAMS, SP
                          ORGANIZE_SCRIPT, RUN_SCRIPT,
                          POST_PROCESSING_SCRIPT, NO_POST_PROCESSING_SCRIPT,
                          RUN_LAUNCHER, PETSC_ENV, PETSC_ENV_LOOKUP, ZIP_SCRIPT, HYPATIA, HYPATIA_SCRIPT,
-                         HYPATIA_CONDA_SCRIPT)
+                         HYPATIA_CONDA_SCRIPT, CODES, MANDYOCJLL_RUN_SCRIPT, MANDYOCJLL_HYPATIA_SCRIPT,
+                         MANDYOCJLL_POST_PROCESSING_SCRIPT, MANDYOCJLL_UNSUPPORTED)
 from .materials import MandyocLayer, BASALT, AIR
 from ... import __version__
 from .reader import (SVGInputError, SETUP_LABEL, MIN_THICKNESS, SAMPLING, EXPERIMENT_KEYS, SVG_VERSION, INKSCAPE_VERSION,
@@ -204,6 +206,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         Steady-state conduction in the lithosphere of the conductive model: '2D' (the whole lithosphere at once,
         so heat also flows sideways where the layers change along x) or 'columns' (each column alone).
         Default: 2D.
+    code : str, optional
+        Code that the run script calls: 'mandyoc' (C++) or 'mandyocjll' (its port to Julia). Default: mandyoc.
 
     Other parameters:
 
@@ -632,6 +636,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         self.temperature_solver = self._check_choice('temperature_solver', setting('temperature_solver', '2D'),
                                                      ['2D', 'columns'], aliases={'1D': 'columns'})
 
+        self.code = self._check_choice('code', setting('code', 'mandyoc'), CODES)
+
         #Velocity and time:
         #   rifting: extension, the moving boundary moves outwards with velocity
         #   compression: convergence, the moving boundary pushes the lithosphere inwards with velocity
@@ -1058,7 +1064,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
 
     def write_scripts(self, output_dir='.', system=None, ncores=None, mandyoc_options='',
                       petsc_dir=None, petsc_arch=None, mandyoc=None, post_processing=True,
-                      tapioca_dir=None, post_processing_dir=None, petsc_env=PETSC_ENV, job_name=None, mail_user=None):
+                      tapioca_dir=None, post_processing_dir=None, petsc_env=PETSC_ENV, job_name=None, mail_user=None,
+                      code=None, mandyocjll=None):
         '''
         Write the scripts of the scenario in output_dir:
           - run_linux.sh or run_mac.sh: runs Mandyoc with mpirun of PETSc (run_mac.sh first looks for the PETSc
@@ -1071,8 +1078,12 @@ class SVGScenario(SVGChecks, VerboseExtension):
             with plot_snapshots.py and frames_generator.py of post_processing
             (https://github.com/jopmas/post_processing), zips the scenario with zipper.sh and removes the output
             files (only if the zip is fine and has all of them); a step is skipped if what it needs is not found;
-          - 0_organize_outputs.sh: copy of src/postrunning/0_organize_outputs.sh;
+          - 0_organize_outputs.sh: copy of src/postrunning/0_organize_outputs.sh (not with mandyocjll);
           - zipper.sh: zips the scenario in <folder>.zip, skipping the files already in the zip.
+
+        With code = 'mandyocjll', the run scripts call mandyocjll, which starts the MPI processes itself and writes
+        one .zarr per variable. The post-processing creates the .nc files with tools/zarr2nc.py of mandyocjll, makes
+        the snapshots and the video and zips the scenario; the .zarr outputs are kept. The PETSc settings are not used.
 
         Parameters
         ----------
@@ -1104,6 +1115,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
         job_name, mail_user : str, optional
             hypatia only: name of the SLURM job (default: svg-<folder>) and e-mail that receives the messages of
             the job (default: TAPIOCA_MAIL_USER of the environment, or no messages).
+        code : str, optional
+            'mandyoc' or 'mandyocjll'. Default: the setting code of the scenario.
+        mandyocjll : str, optional
+            mandyocjll executable (default: $HOME/opt/mandyocjll/bin/mandyocjll; MANDYOCJLL in the environment when
+            the script runs overrides it).
         '''
         this_system = {'Linux': 'linux', 'Darwin': 'mac'}.get(platform.system())
         if(system is None):
@@ -1113,6 +1129,9 @@ class SVGScenario(SVGChecks, VerboseExtension):
             system = this_system
         if(system not in SYSTEMS):
             raise SVGInputError(f"Unknown system '{system}'; use {' or '.join(SYSTEMS)}.")
+        code = self.code if(code is None) else code
+        if(code not in CODES):
+            raise SVGInputError(f"Unknown code '{code}'; use {' or '.join(CODES)}.")
         if(not os.path.isfile(ORGANIZE_SCRIPT)):
             raise SVGInputError(f"0_organize_outputs.sh not found in {os.path.dirname(os.path.abspath(ORGANIZE_SCRIPT))}.")
 
@@ -1135,6 +1154,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
                           else 'arch-label-optimized')
         if(mandyoc is None):
             mandyoc = '$HOME/opt/mandyoc/bin/mandyoc'
+        if(mandyocjll is None):
+            mandyocjll = '$HOME/opt/mandyocjll/bin/mandyocjll'
         if(ncores is None):
             ncores = os.cpu_count() or 1
         if(tapioca_dir is None):
@@ -1145,8 +1166,13 @@ class SVGScenario(SVGChecks, VerboseExtension):
         os.makedirs(output_dir, exist_ok=True)
         path = lambda fname: os.path.join(output_dir, fname)
 
-        run = HYPATIA_SCRIPT if(system == 'hypatia') else RUN_SCRIPT
-        run = run.replace('@POST_PROCESSING@', POST_PROCESSING_SCRIPT if(post_processing) else NO_POST_PROCESSING_SCRIPT)
+        if(code == 'mandyocjll'):
+            run = MANDYOCJLL_HYPATIA_SCRIPT if(system == 'hypatia') else MANDYOCJLL_RUN_SCRIPT
+            post_processing_script = MANDYOCJLL_POST_PROCESSING_SCRIPT
+        else:
+            run = HYPATIA_SCRIPT if(system == 'hypatia') else RUN_SCRIPT
+            post_processing_script = POST_PROCESSING_SCRIPT
+        run = run.replace('@POST_PROCESSING@', post_processing_script if(post_processing) else NO_POST_PROCESSING_SCRIPT)
         run = run.replace('@PETSC_ENV_LOOKUP@', PETSC_ENV_LOOKUP if(petsc_env) else '')
         if(system == 'hypatia'):
             if(mail_user is None):
@@ -1159,22 +1185,33 @@ class SVGScenario(SVGChecks, VerboseExtension):
                                ('JOB_NAME', job_name), ('CONDA_ENV', HYPATIA['conda_env']),
                                ('MODULES', '\n'.join(f'module load {module}' for module in HYPATIA['modules']))]:
                 run = run.replace(f'@{key}@', str(value))
-        for key, value in [('PETSC_DIR', petsc_dir), ('PETSC_ARCH', petsc_arch), ('MANDYOC', mandyoc),
+        for key, value in [('PETSC_DIR', petsc_dir), ('PETSC_ARCH', petsc_arch), ('MANDYOC', mandyoc), ('MANDYOCJLL', mandyocjll),
                            ('NCORES', int(ncores)), ('MANDYOC_OPTIONS', mandyoc_options),
                            ('LAUNCHER', RUN_LAUNCHER.get(system, '')), ('TAPIOCA_DIR', tapioca_dir),
                            ('POST_PROCESSING_DIR', post_processing_dir), ('PETSC_ENV', petsc_env)]:
             run = run.replace(f'@{key}@', str(value))
         scripts = {f'run_{system}.sh': run, 'zipper.sh': ZIP_SCRIPT}
-        with open(ORGANIZE_SCRIPT) as f:
-            scripts['0_organize_outputs.sh'] = f.read()
+        if(code == 'mandyoc'):
+            with open(ORGANIZE_SCRIPT) as f:
+                scripts['0_organize_outputs.sh'] = f.read()
 
         for fname, text in scripts.items():
             with open(path(fname), 'w') as f:
                 f.write(text)
             os.chmod(path(fname), 0o755)
         if(self.verbose):
-            print(f"Scripts: {', '.join(scripts)} ({system}, {int(ncores)} cores"
+            print(f"Scripts: {', '.join(scripts)} ({code}, {system}, {int(ncores)} cores"
                   f"{', with post-processing' if(post_processing) else ''})")
+
+    def _unsupported_by_mandyocjll(self, params):
+        '''Options of param.txt (dict) that mandyocjll does not have and that stop its run.'''
+        on = lambda key: str(params.get(key, False)).lower() in ('true', 'on')
+        found = [key for key in MANDYOCJLL_UNSUPPORTED if on(key)]
+        found += ['sp_mode'] if(str(params.get('sp_mode', 'none')) != 'none') else []
+        found += ['RK4'] if(str(params.get('RK4', 'Euler')) != 'Euler') else []
+        found += ['basal_heat'] if(float(params.get('basal_heat', 0)) > 0) else []
+        found += ['dimensions'] if(int(params.get('dimensions', 2)) != 2) else []
+        return found
 
     def write_all(self, output_dir='.', plots=True, copy_svg=True, scripts=True, system=None, ncores=None,
                   mandyoc_options='', post_processing=True, zip_inputs=True, job_name=None, mail_user=None, **params):
@@ -1207,7 +1244,10 @@ class SVGScenario(SVGChecks, VerboseExtension):
         builder = self.builder
         builder.path = output_dir
         builder.export_interfaces(export='none')
-        builder.set_params(**self.parameters(**params))
+        parameters = self.parameters(**params)
+        if(self.code == 'mandyocjll' and scripts and (unsupported := self._unsupported_by_mandyocjll(parameters))):
+            print(f"Warning: mandyocjll does not have these options of param.txt yet and will stop: {', '.join(unsupported)}")
+        builder.set_params(**parameters)
         builder.export_params()
 
         if(self.T is None):

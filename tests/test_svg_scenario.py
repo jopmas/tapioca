@@ -2,6 +2,7 @@
 
 import re
 import shutil
+import subprocess
 import sys
 import zipfile
 
@@ -426,6 +427,7 @@ def test_run_script_hypatia(tmp_path, monkeypatch):
     assert run.index("mpirun -n") < run.index("bash 0_organize_outputs.sh") < run.index("conda activate") \
         < run.index("meshes2netcdf.jl") < run.index("bash zipper.sh")
     assert "caffeinate" not in run and "conda env list" not in run
+    assert run.index("export OMP_NUM_THREADS") < run.index("mpirun -n")
 
 
 def test_run_script_hypatia_options(tmp_path, monkeypatch):
@@ -442,6 +444,52 @@ def test_run_script_hypatia_options(tmp_path, monkeypatch):
     monkeypatch.delenv("TAPIOCA_MAIL_USER")
     build_scenario("rifting").write_scripts(str(tmp_path / "no_mail"), system="hypatia")
     assert "--mail" not in (tmp_path / "no_mail" / "run_hypatia.sh").read_text()
+
+
+@pytest.mark.parametrize("system", ["linux", "mac", "hypatia"])
+@pytest.mark.parametrize("post_processing", [True, False])
+def test_run_script_mandyocjll(tmp_path, system, post_processing):
+    '''code = mandyocjll: the run scripts of every system call mandyocjll and are valid bash.'''
+    scenario = build_scenario("rifting", code="mandyocjll")
+    scenario.write_scripts(str(tmp_path), system=system, ncores=3, mandyoc_options="-seed 0,2", post_processing=post_processing)
+    path = tmp_path / f"run_{system}.sh"
+    run = path.read_text()
+    assert re.search(r"@[A-Z_]+@", run) is None
+    assert '"$MANDYOCJLL" -n $NUMBER_OF_CORES $MANDYOC_OPTIONS' in run and "-seed 0,2" in run
+    assert "MANDYOCJLL=${MANDYOCJLL:-$HOME/opt/mandyocjll/bin/mandyocjll}" in run
+    for text in ["mpirun -n", "0_organize_outputs.sh", "PETSC_DIR", "meshes2netcdf.jl", "rm -rf"]:
+        assert text not in run, text
+    assert ("caffeinate" in run) == (system == "mac") and ("#SBATCH --ntasks=3" in run) == (system == "hypatia")
+    assert ("zarr2nc.py" in run) == post_processing and ("plot_snapshots.py" in run) == post_processing
+    assert "bash zipper.sh" in run and "export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}" in run
+    assert not (tmp_path / "0_organize_outputs.sh").exists()
+    assert '"*.zarr"' in (tmp_path / "zipper.sh").read_text()
+    if(shutil.which("bash")):
+        subprocess.run(["bash", "-n", str(path)], check=True)
+
+
+def test_code_of_the_setup_shape(tmp_path, capsys):
+    '''The code comes from the setup shape, --code overrides it, and other codes are errors.'''
+    text = svg_path("rifting").read_text()
+    assert "Lx = " in text
+    svg = tmp_path / "rifting.svg"
+    svg.write_text(text.replace("Lx = ", "code = mandyocjll\nLx = ", 1))
+    args = [str(svg), "--dx", "10", "--dz", "10", "--no-plots", "--system", "linux"]
+    cli.main(args + ["-o", str(tmp_path / "svg")])
+    assert "MANDYOCJLL" in (tmp_path / "svg" / "run_linux.sh").read_text()
+    assert "will stop: magmatism" in capsys.readouterr().out  # magmatism = on in the SVG
+    cli.main(args + ["-o", str(tmp_path / "cli"), "--code", "mandyoc"])
+    assert "will stop" not in capsys.readouterr().out
+    assert "MANDYOCJLL" not in (tmp_path / "cli" / "run_linux.sh").read_text()
+    with pytest.raises(SVGInputError):
+        build_scenario("rifting", code="other")
+
+
+def test_mandyocjll_warns_about_unsupported_options(tmp_path, capsys):
+    scenario = build_scenario("rifting", code="mandyocjll", magmatism="on")
+    scenario.write_all(str(tmp_path), plots=False, system="linux", RK4="Runge-Kutta")
+    out = capsys.readouterr().out
+    assert "will stop: magmatism, RK4" in out
 
 
 def _thermal_state(folder):

@@ -2,7 +2,8 @@
 # Includes PETSc 3.24.5 (OpenMPI build) to build and run Mandyoc
 # in the same environment, without activating another one.
 #
-# Versions taken on 2026-10-28, and PETSc, the compiler and zarr on 2026-11-25 (macOS arm64, conda-forge).
+# Versions taken on 2026-10-28, PETSc, the compiler and zarr on 2026-11-25, and pypdf and poppler on 2026-11-26
+# (macOS arm64, conda-forge).
 #
 #   conda env create -f environment.yml
 #   conda activate tapioca
@@ -39,6 +40,8 @@ dependencies:
   - jupyterlab=4.6.4
   - ipython=9.17.1
   - ffmpeg=8.1.1      # videos of the frames
+  - pypdf=7.1.1       # reading PDF reports
+  - poppler=26.11.0   # pdftoppm and pdftotext (PDF pages to images and text)
 
   # tests
   - pytest=9.1.1

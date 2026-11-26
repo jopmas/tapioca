@@ -1207,7 +1207,6 @@ class SVGScenario(SVGChecks, VerboseExtension):
         '''Options of param.txt (dict) that mandyocjll does not have and that stop its run.'''
         on = lambda key: str(params.get(key, False)).lower() in ('true', 'on')
         found = [key for key in MANDYOCJLL_UNSUPPORTED if on(key)]
-        found += ['sp_mode'] if(str(params.get('sp_mode', 'none')) != 'none') else []
         found += ['RK4'] if(str(params.get('RK4', 'Euler')) != 'Euler') else []
         found += ['basal_heat'] if(float(params.get('basal_heat', 0)) > 0) else []
         found += ['dimensions'] if(int(params.get('dimensions', 2)) != 2) else []

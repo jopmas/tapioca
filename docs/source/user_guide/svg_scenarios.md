@@ -79,7 +79,7 @@ tapioca-svg rifting.svg -o rifting --code mandyocjll --system mac --mandyoc-opti
   `.nc` files with `tools/zarr2nc.py` of mandyocjll, makes the snapshots and the video and zips the scenario; the
   `.zarr` outputs are kept. If the run fails, the script stops before it;
 - the input files are the same for both codes. mandyocjll is 2D and does not have every option of Mandyoc: tapioca
-  warns about the options of the scenario that will stop it (surface processes, magmatism, nondimensionalization, ...).
+  warns about the options of the scenario that will stop it (magmatism, nondimensionalization, ...).
 
 
 (run-on-hypatia)=

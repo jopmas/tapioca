@@ -499,7 +499,7 @@ def test_mandyocjll_warns_about_unsupported_options(tmp_path, capsys):
     scenario = build_scenario("rifting", code="mandyocjll", magmatism="on")
     scenario.write_all(str(tmp_path), plots=False, system="linux", RK4="Runge-Kutta", nondimensionalization="True")
     out = capsys.readouterr().out
-    assert "will stop: nondimensionalization, RK4" in out  # magmatism runs in mandyocjll
+    assert "will stop: RK4" in out  # magmatism and nondimensionalization run in mandyocjll
 
 
 def _thermal_state(folder):

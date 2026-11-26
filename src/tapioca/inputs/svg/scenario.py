@@ -1208,7 +1208,6 @@ class SVGScenario(SVGChecks, VerboseExtension):
         on = lambda key: str(params.get(key, False)).lower() in ('true', 'on')
         found = [key for key in MANDYOCJLL_UNSUPPORTED if on(key)]
         found += ['RK4'] if(str(params.get('RK4', 'Euler')) != 'Euler') else []
-        found += ['basal_heat'] if(float(params.get('basal_heat', 0)) > 0) else []
         found += ['dimensions'] if(int(params.get('dimensions', 2)) != 2) else []
         return found
 

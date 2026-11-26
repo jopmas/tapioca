@@ -19,7 +19,7 @@ SYSTEMS:list = ['linux', 'mac', 'hypatia']
 """list: Systems of the run scripts (hypatia: SLURM job on Hypatia, the cluster of the group)."""
 CODES:list = ['mandyoc', 'mandyocjll']
 """list: Codes of the run scripts: Mandyoc (C++) or mandyocjll (its port to Julia, zarr outputs)."""
-MANDYOCJLL_UNSUPPORTED:tuple = ('nondimensionalization', 'multi_velocity')
+MANDYOCJLL_UNSUPPORTED:tuple = ()
 """tuple: Switches of param.txt that stop mandyocjll when they are on (with RK4, basal_heat and 3D)."""
 
 SP_MODES:list = ['none', 'diffusion', 'sedimentation_only', 'sedimentation_rate_limited', 'theunissen_sedimentation']

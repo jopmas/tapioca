@@ -1946,6 +1946,122 @@ class TemperatureFieldBuilder:
 
         return self
 
+    ## NOTE (Claude): thermal anomalies (blobs, plumes, hot base) added to the field after the solvers, used by the
+    ## custom_temp_field scripts of the SVG scenarios. New methods only; nothing above was changed.
+    _ANOMALY_SHAPES = ('gaussian', 'cosine', 'tophat')
+
+    def _anomaly_weight(self, r2, shape):
+        '''Weight (0 to 1) of an anomaly at the normalised squared distance r2 from its centre.'''
+        if shape == 'gaussian':
+            return np.exp(-r2)
+        r = np.sqrt(r2)
+        if shape == 'cosine':
+            return np.where(r < 1.0, 0.5 * (1.0 + np.cos(np.pi * np.minimum(r, 1.0))), 0.0)
+        if shape == 'tophat':
+            return np.where(r <= 1.0, 1.0, 0.0)
+        raise ValueError(f"shape must be one of {self._ANOMALY_SHAPES} (found '{shape}').")
+
+    def _apply_anomaly(self, weight, dT, mode):
+        '''Add dT * weight (mode 'add') or blend towards the temperature dT (mode 'set') below the surface.'''
+        if mode not in ('add', 'set'):
+            raise ValueError(f"mode must be 'add' or 'set' (found '{mode}').")
+        weight = np.where(self.ZZ < 0, weight, 0.0) #only in the rocks: the sticky air stays at 0 oC
+        T = self.temperature.values
+        self.temperature.values = T + dT * weight if mode == 'add' else T + weight * (dT - T)
+        self.temperature.attrs['units'] = 'deg C'
+        return self
+
+    def _anomaly_grid(self):
+        '''X and z [m] of the nodes (Nz, Nx), z positive upwards (-Lz at the base, 0 at the top).'''
+        ## NOTE (Claude): the base is taken from z: GeometryDomain stores Lz as negative (self.Lz = -abs(Lz)).
+        return np.meshgrid(np.asarray(self.x, dtype=np.float64), np.asarray(self.z, dtype=np.float64))
+
+    def add_thermal_anomaly(self, dT:float, x0:float, z0:float, rx:float, rz:float=None,
+                            shape:str='gaussian', mode:str='add'):
+        '''
+        Elliptic thermal anomaly (e.g. a blob of hot or cold mantle) added to ``temperature``.
+
+        Parameters
+        ----------
+        dT : float
+            Temperature excess at the centre [oC] (negative: cold anomaly) with mode 'add', or the temperature
+            of the anomaly with mode 'set'.
+        x0, z0 : float
+            Centre of the anomaly [m] (z positive upwards: -Lz at the base, 0 at the top of the domain).
+        rx, rz : float
+            Horizontal and vertical radii [m]. Default rz = rx (circle).
+        shape : str
+            'gaussian' (exp(-r^2), r = 1 at the radii, default), 'cosine' (smooth, zero outside the radii) or
+            'tophat' (sharp edges).
+        mode : str
+            'add' (T + dT * weight, default) or 'set' (T + weight * (dT - T), the anomaly is at dT).
+
+        The sticky air (above ``surface_interface``) is not changed.
+        '''
+        rz = rx if rz is None else rz
+        X, Z = self._anomaly_grid()
+        weight = self._anomaly_weight(((X - x0) / rx)**2 + ((Z - z0) / rz)**2, shape)
+        return self._apply_anomaly(weight, dT, mode)
+
+    def add_plume(self, dT:float, x0:float, z_head:float, head_radius:float, head_rz:float=None,
+                  tail_radius:float=None, z_base:float=None, shape:str='gaussian', mode:str='add'):
+        '''
+        Mantle plume added to ``temperature``: an elliptic head centred at (x0, z_head) and a vertical tail
+        (conduit) from z_base up to the head, with the same temperature excess.
+
+        Parameters
+        ----------
+        dT : float
+            Temperature excess of the plume [oC] (mode 'add') or its temperature (mode 'set').
+        x0 : float
+            Horizontal position of the axis of the plume [m].
+        z_head : float
+            z of the centre of the head [m] (positive upwards: -Lz at the base, 0 at the top).
+        head_radius, head_rz : float
+            Horizontal and vertical radii of the head [m]. Default head_rz = head_radius.
+        tail_radius : float or None
+            Half width of the tail [m]. Default head_radius / 4; 0 gives a plume without tail (a head only).
+        z_base : float
+            z where the tail starts [m]. Default -Lz (the base of the domain).
+        shape, mode : str
+            As in `add_thermal_anomaly`.
+        '''
+        head_rz = head_radius if head_rz is None else head_rz
+        tail_radius = head_radius / 4 if tail_radius is None else tail_radius
+        X, Z = self._anomaly_grid()
+        z_base = Z.min() if z_base is None else z_base
+        weight = self._anomaly_weight(((X - x0) / head_radius)**2 + ((Z - z_head) / head_rz)**2, shape)
+        if tail_radius > 0:
+            tail = self._anomaly_weight(((X - x0) / tail_radius)**2, shape)
+            weight = np.maximum(weight, np.where((Z >= z_base) & (Z <= z_head), tail, 0.0))
+        return self._apply_anomaly(weight, dT, mode)
+
+    def add_basal_anomaly(self, dT:float, thickness:float, x0:float=None, width:float=None,
+                          shape:str='gaussian', mode:str='add'):
+        '''
+        Thermal anomaly at the base of the domain (e.g. a hot thermal boundary layer), decaying upwards.
+
+        Parameters
+        ----------
+        dT : float
+            Temperature excess at the base [oC] (mode 'add') or the temperature at the base (mode 'set').
+        thickness : float
+            Vertical scale of the anomaly above the base [m] (the radius of `shape`).
+        x0, width : float or None
+            Centre and half width of the anomaly along x [m]. Default: the whole base (no lateral decay).
+        shape, mode : str
+            As in `add_thermal_anomaly`.
+
+        Mandyoc usually keeps the temperature of the base fixed at its initial value, so a basal anomaly also
+        heats the mantle from below during the run.
+        '''
+        X, Z = self._anomaly_grid()
+        r2 = ((Z - Z.min()) / thickness)**2
+        if width is not None:
+            x0 = self.Lx / 2 if x0 is None else x0
+            r2 = r2 + ((X - x0) / width)**2
+        return self._apply_anomaly(self._anomaly_weight(r2, shape), dT, mode)
+
 
 class GenericTimeConditions:
     '''

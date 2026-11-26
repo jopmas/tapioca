@@ -7,7 +7,7 @@ Command line interface of the scenario builder:
                 [--magmatism off] [--magmatism-extraction off] [--magmatism-Ts0 1080]
                 [--heat-capacity 1250] [--thermal-expansion-coefficient 3.28e-5] [--gravity-acceleration 10]
                 [--preset-initial-temperature path/to/preliminary] [--preset-temperature-mode profile]
-                [--preset-time 10] [--custom-veloc-field build_veloc.py]
+                [--preset-time 10] [--custom-veloc-field build_veloc.py] [--custom-temp-field build_temp.py]
                 [--sp-surface-processes True] [--sp-mode theunissen_sedimentation] [--sp-format ggciag] [--sediment-layer sediments]
                 [--ti-sed 0] [--tf-sed 70] [--dt-sed 1] [--sedimentation-rate "0 Myr: 25, 20 Myr: 50"] [--Ld 35000] [--base-level -500]
                 [--min-thickness 1] [--sampling 100] [--no-plots]
@@ -74,6 +74,9 @@ def main(argv=None):
     parser.add_argument('--custom-veloc-field', '--custom_veloc_field',
                         help='Python script with build_velocity(scenario) that builds the velocity field instead of the '
                              'kinematic regime (default: from the SVG, or none)')
+    parser.add_argument('--custom-temp-field', '--custom_temp_field',
+                        help='Python script with build_temperature(scenario) that changes the initial temperature, e.g. '
+                             'a mantle plume or a thermal anomaly at the base (default: from the SVG, or none)')
     parser.add_argument('--water-layer', help='label (or ID) of the unit drawn as water, below the sticky air (default: from the SVG, or none)')
     parser.add_argument('--magmatic-layer', help='label (or ID) of the layer that receives the extracted melt (default: from the SVG, or '
                                                  'a basalt layer added at the top of the solid layers)')
@@ -127,7 +130,8 @@ def main(argv=None):
                                gravity_acceleration=args.gravity_acceleration,
                                preset_initial_temperature=args.preset_initial_temperature,
                                preset_temperature_mode=args.preset_temperature_mode, preset_time=args.preset_time,
-                               custom_veloc_field=args.custom_veloc_field, code=args.code,
+                               custom_veloc_field=args.custom_veloc_field,
+                               custom_temp_field=args.custom_temp_field, code=args.code,
                                temperature_solver=args.temperature_solver, water_layer=args.water_layer,
                                magmatic_layer=args.magmatic_layer,
                                sp_surface_processes=args.sp_surface_processes, sp_mode=args.sp_mode, sp_format=args.sp_format,

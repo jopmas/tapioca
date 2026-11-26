@@ -16,6 +16,7 @@ thickened crust of `rifting_sedimentation`) and the templates drawn outside the 
 | `accordion` | non-cratonic lithosphere between two cratons, with a weak seed (M300) | accordion (extension, convergence, quiescence and extension) |
 | `quiescence` | cratonic keel with a mobile belt in a 4000 km domain | quiescence, 1000 Myr |
 | `rifting_sedimentation` | continental lithosphere (120 km) with the crust 5 km thicker at the centre, as the scenario 0.25cm_35km_lc0.5 | symmetric rifting, 0.5 cm/yr, 70 Myr, sedimentation (`theunissen_sedimentation`) with 70 layers of sediments |
+| `plume` | continental lithosphere (155 km) above a mantle plume at the centre of a 700 km deep domain | quiescence, 50 Myr; the plume is added to the initial temperature by `build_temp.py` (`custom_temp_field`) |
 
 To create the input files of Mandyoc:
 
@@ -55,3 +56,9 @@ The files depend on the version of Mandyoc (`sp_format`, or `--sp-format`):
 The other
 parameters of the surface processes (`sp_d_c`, `strain_sed`, `continental_slope`, `a2l`, ...) may also be written in
 the description of the `setup` rectangle; they go to `param.txt` as given.
+
+Custom initial temperature (`plume`): `custom_temp_field = build_temp.py` (or `--custom-temp-field`) runs
+`build_temperature(scenario)` of the script after the initial temperature is built. The script adds anomalies with
+`TemperatureFieldBuilder.add_plume`, `add_basal_anomaly` (e.g. a hot base) or `add_thermal_anomaly` (a blob), or
+changes `scenario.temperature_builder.temperature` directly. Any SVG can use it (the head of the plume of
+`build_temp.py` is 300 km below the surface, so the domain must be deeper than that).

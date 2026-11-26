@@ -120,12 +120,13 @@ def test_interfaces_txt(written):
 
 
 def test_initial_temperature(written):
-    _, scenario, folder = written
+    name, scenario, folder = written
     T = np.loadtxt(folder / "input_temperature_0.txt")
     assert T.shape == (scenario.Nx * scenario.Nz,)
     T = T.reshape(scenario.Nz, scenario.Nx)
     np.testing.assert_array_equal(T, scenario.T)
-    assert T.min() == 0.0 and T.max() < scenario.TP + 300
+    excess = 250.0 if name == "plume" else 0.0  # the plume of build_temp.py
+    assert T.min() == 0.0 and T.max() < scenario.TP + 300 + excess
     air = scenario.Z < scenario.thickness_sa[None, :]
     assert np.all(T[air] == 0.0)
 
@@ -729,6 +730,149 @@ def test_custom_veloc_field_checks(tmp_path):
         build_scenario("compression", custom_veloc_field=str(other))
     with pytest.raises(SVGInputError, match="quiescence"):
         build_scenario("compression", regime="quiescence", custom_veloc_field=str(custom_script(tmp_path)))
+
+
+###############################################################################
+# custom_temp_field: initial temperature changed by a script
+###############################################################################
+
+PLUME = '''
+def build_temperature(scenario):
+    t = scenario.temperature_builder
+    t.add_plume(300.0, x0=scenario.Lx / 2, z_head=-300e3, head_radius=60e3, tail_radius=20e3)
+    return t
+
+def infos(scenario):
+    return ['plume at the centre']
+
+def write_files(scenario, output_dir):
+    import os
+    with open(os.path.join(output_dir, 'plume.txt'), 'w') as f:
+        f.write('plume')
+    return ['plume.txt']
+'''
+
+
+def test_thermal_anomalies_of_the_temperature_builder():
+    scenario = build_scenario("rifting")
+    with quiet():
+        scenario.build_temperature()
+    t, T0 = scenario.temperature_builder, scenario.T.copy()
+    X, Z = np.meshgrid(scenario.builder.x, scenario.builder.z)
+    air = t.ZZ >= 0
+
+    t.temperature.values = T0.copy()
+    t.add_thermal_anomaly(200.0, x0=800e3, z0=-200e3, rx=50e3, shape="tophat")
+    dT = t.temperature.values - T0
+    inside = ((X - 800e3) / 50e3)**2 + ((Z + 200e3) / 50e3)**2 <= 1
+    np.testing.assert_allclose(dT[inside], 200.0)
+    np.testing.assert_allclose(dT[~inside], 0.0)
+
+    t.temperature.values = T0.copy()
+    t.add_thermal_anomaly(1600.0, x0=800e3, z0=-200e3, rx=50e3, rz=30e3, shape="cosine", mode="set")
+    i, j = np.argmin(np.abs(scenario.builder.z + 200e3)), np.argmin(np.abs(scenario.builder.x - 800e3))
+    assert t.temperature.values[i, j] == pytest.approx(1600.0)
+    assert np.all(np.isclose(t.temperature.values, T0) | (np.abs(X - 800e3) < 50e3))
+
+    t.temperature.values = T0.copy()
+    t.add_plume(250.0, x0=800e3, z_head=-200e3, head_radius=60e3, tail_radius=20e3, shape="tophat")
+    dT = t.temperature.values - T0
+    assert np.all(dT[(np.abs(X - 800e3) <= 20e3) & (Z <= -200e3)] == pytest.approx(250.0))  # tail down to the base
+    assert np.all(dT[np.abs(X - 800e3) > 60e3] == 0)
+
+    t.temperature.values = T0.copy()
+    t.add_basal_anomaly(150.0, thickness=40e3, x0=800e3, width=100e3)
+    dT = t.temperature.values - T0
+    assert dT[0, j] == pytest.approx(150.0) and dT[0, 0] < 1.0 and dT[-1, j] == 0
+    assert np.all(dT[air] == 0)
+
+    t.temperature.values = T0.copy()
+    t.add_basal_anomaly(100.0, thickness=1.0e6, shape="tophat")  # reaches the top: the sticky air stays at 0 oC
+    assert np.all(t.temperature.values[air] == T0[air]) and np.all(t.temperature.values[~air] == T0[~air] + 100.0)
+
+    with pytest.raises(ValueError, match="shape"):
+        t.add_thermal_anomaly(1.0, 0.0, 0.0, 1.0, shape="square")
+    with pytest.raises(ValueError, match="mode"):
+        t.add_thermal_anomaly(1.0, 0.0, 0.0, 1.0, mode="multiply")
+
+
+def test_custom_temp_field_changes_the_temperature(tmp_path):
+    script = custom_script(tmp_path, PLUME, "build_temp.py")
+    base = build_scenario("rifting")
+    with quiet():
+        T0 = base.build_temperature().copy()
+    scenario = build_scenario("rifting", custom_temp_field=str(script))
+    assert scenario.source["custom_temp_field"] == "argument"
+    with quiet():
+        T = scenario.build_temperature()
+    dT = T - T0
+    assert dT.max() == pytest.approx(300.0, rel=0.05) and dT.min() > -1e-9
+    assert np.all(dT[:, 0] < 1e-6)  # far from the plume
+    np.testing.assert_array_equal(scenario.builder.DTree.fields.temperature.values, T)
+
+    folder = tmp_path / "out"
+    with quiet():
+        scenario.write_all(str(folder), plots=False, scripts=False)
+    assert (folder / "build_temp.py").read_text() == PLUME
+    with zipfile.ZipFile(folder / "inputs_out.zip") as zf:
+        assert {"build_temp.py", "plume.txt"} <= set(zf.namelist())
+    infos = (folder / "infos_out.txt").read_text()
+    assert f"custom temperature field: {script}" in infos and "plume at the centre" in infos
+    T_file = np.loadtxt(folder / "input_temperature_0.txt", skiprows=4).reshape(scenario.Nz, scenario.Nx)
+    np.testing.assert_allclose(T_file, T)
+
+
+def test_custom_temp_field_with_custom_veloc_field(tmp_path):
+    scenario = build_scenario("compression", moving_boundary="left", custom_veloc_field=str(custom_script(tmp_path)),
+                              custom_temp_field=str(custom_script(tmp_path, PLUME, "build_temp.py")))
+    folder = tmp_path / "out"
+    with quiet():
+        scenario.write_all(str(folder), plots=False, scripts=False)
+    with zipfile.ZipFile(folder / "inputs_out.zip") as zf:
+        assert {"build_veloc.py", "build_temp.py", "plume.txt"} <= set(zf.namelist())
+
+
+def test_custom_temp_field_relative_to_the_svg(tmp_path):
+    svg = tmp_path / "rifting.svg"
+    text = svg_path("rifting").read_text()
+    text = re.sub(r"(regime\s*=\s*rifting)", r"\1\ncustom_temp_field = build_temp.py", text, count=1)
+    svg.write_text(text)
+    custom_script(tmp_path, PLUME, "build_temp.py")
+    with quiet():
+        scenario = SVGScenario(str(svg), verbose=False, **COARSE)
+    assert scenario.source["custom_temp_field"] == "SVG"
+    assert scenario.custom_temp_field == str(tmp_path / "build_temp.py")
+
+
+@pytest.mark.parametrize("text, message", [
+    ("x = 1\n", "has no function build_temperature"),
+    ("def build_temperature(scenario):\n    return None\n", "must return a TemperatureFieldBuilder"),
+    ("import numpy as np\ndef build_temperature(scenario):\n    t = scenario.temperature_builder\n"
+     "    t.temperature.values[0, 0] = np.nan\n    return t\n", "must be finite")])
+def test_custom_temp_field_bad_script(tmp_path, text, message):
+    scenario = build_scenario("rifting", custom_temp_field=str(custom_script(tmp_path, text, "build_temp.py")))
+    with pytest.raises(SVGInputError, match=message), quiet():
+        scenario.build_temperature()
+
+
+def test_custom_temp_field_checks(tmp_path):
+    with pytest.raises(SVGInputError, match="not found"):
+        build_scenario("rifting", custom_temp_field=str(tmp_path / "missing.py"))
+    other = tmp_path / "temp.txt"
+    other.write_text("")
+    with pytest.raises(SVGInputError, match="Python script"):
+        build_scenario("rifting", custom_temp_field=str(other))
+
+
+def test_plume_example():
+    scenario = build_scenario("plume")
+    assert scenario.source["custom_temp_field"] == "SVG"
+    with quiet():
+        T = scenario.build_temperature()
+    j = np.argmin(np.abs(scenario.x - scenario.Lx / 2))
+    excess = T[:, j] - T[:, 0]
+    assert excess.max() == pytest.approx(250.0, rel=0.05)
+    assert excess[0] > 200.0  # tail at the base of the domain
 
 
 # Surface processes and sedimentation ###############################################

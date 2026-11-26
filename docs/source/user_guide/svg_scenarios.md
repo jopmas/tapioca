@@ -188,6 +188,7 @@ thermal_expansion_coefficient = 3.28e-5
 gravity_acceleration = 10
 preset_initial_temperature = ../preliminary
 custom_veloc_field = build_veloc.py
+custom_temp_field = build_temp.py
 code = mandyoc
 temperature_solver = 2D
 ```
@@ -218,6 +219,7 @@ value after a space or `=` (`--heat-capacity 700`, `--heat_capacity=700`). Defau
 | `water_layer` | none | label (or ID) of the unit drawn as water, right below the sticky air |
 | `preset_initial_temperature` | none | folder of a preliminary scenario (see below) |
 | `custom_veloc_field` | none | Python script that builds the velocity field instead of the kinematic regime (see below) |
+| `custom_temp_field` | none | Python script that changes the initial temperature, e.g. a plume or a hot base (see below) |
 | `code` | `mandyoc` | code that the run script calls: `mandyoc` or `mandyocjll` (see [above](#run-with-mandyocjll)) |
 | `temperature_solver` | `2D` | `2D` or `columns` (see below) |
 | `min_thickness` | 1 km | thin layers left by overlapping shapes (see above); `0 km` keeps them |
@@ -267,6 +269,43 @@ def build_velocity(scenario):
 
 def infos(scenario):
     return ['plate pushed from the left, outflow through the base']
+```
+
+### Custom temperature field
+
+`custom_temp_field` changes the initial temperature with a Python script (a relative path in the SVG is relative to
+the folder of the SVG; on the command line, `--custom-temp-field`). The script defines `build_temperature(scenario)`,
+which receives the scenario with its temperature already built (steady-state conduction, preset or isothermal) in
+`scenario.temperature_builder`, changes it and returns it; tapioca then creates the field with
+`MandyocBuilder.create_temperature_field`. As in `custom_veloc_field`, `infos(scenario)` and
+`write_files(scenario, output_dir)` are optional, and the script is copied to the folder of the scenario and zipped
+with the inputs. Both scripts may be used together.
+
+`TemperatureFieldBuilder` has three methods for the usual anomalies (z positive upwards: `-Lz` at the base, 0 at the
+top of the sticky air); the sticky air is never changed:
+
+| Method | Anomaly |
+|---|---|
+| `add_thermal_anomaly(dT, x0, z0, rx, rz=None)` | ellipse centred at (x0, z0), e.g. a hot or cold blob |
+| `add_plume(dT, x0, z_head, head_radius, head_rz=None, tail_radius=None, z_base=None)` | head centred at (x0, z_head) and a tail from `z_base` (default: the base) up to the head |
+| `add_basal_anomaly(dT, thickness, x0=None, width=None)` | hot (or cold) layer at the base, along the whole base or around x0 |
+
+All of them take `shape` (`gaussian`, the default, `cosine`, which is zero outside the radii, or `tophat`) and `mode`
+(`add`: `dT` is added, or `set`: the anomaly is at the temperature `dT`). Mandyoc usually keeps the temperature of
+the base at its initial value, so a basal anomaly also heats the mantle from below during the run.
+
+Example (`examples/svg_scenarios/plume/build_temp.py`): a plume 250 °C hotter than the mantle, at the centre of the
+domain:
+
+```python
+def build_temperature(scenario):
+    t = scenario.temperature_builder
+    z_surface = -float(scenario.thickness_sa.max())          # base of the sticky air
+    t.add_plume(250.0, x0=scenario.Lx / 2, z_head=z_surface - 300e3, head_radius=80e3, tail_radius=25e3)
+    return t
+
+def infos(scenario):
+    return ['plume at the centre of the domain']
 ```
 
 ## Water and magmatic layers

@@ -29,6 +29,7 @@ SVG_SCENARIOS = {
     "accordion": ("accordion", "right"),
     "quiescence": ("quiescence", "right"),
     "rifting_sedimentation": ("rifting", "symmetric"),
+    "plume": ("quiescence", "right"),
 }
 
 # coarse grid and short conductive model, so that the SVG scenarios are built in a fraction of a second

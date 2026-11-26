@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Plume scenario: continental lithosphere (155 km) above a mantle plume at the centre of the domain.
+     1 user unit = 1 km; page = model domain (1600 x 700 km). -->
+<!-- Example of custom_temp_field: build_temp.py adds the plume (head and tail) to the initial temperature. -->
+<svg
+   width="1600mm"
+   height="700mm"
+   viewBox="0 0 1600 700"
+   version="1.1"
+   id="svg1"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns="http://www.w3.org/2000/svg">
+  <g inkscape:groupmode="layer" id="layer1" inkscape:label="lithologies">
+    <rect id="asthenosphere" inkscape:label="asthenosphere" x="0" y="0" width="1600" height="700" style="fill:#cfe2cd;stroke:none">
+      <title id="title1">Asthenosphere</title>
+      <desc id="desc1">wet olivine
+C = 1.0
+rho = 3378.0
+H = 0.0
+A = 1.393e-14
+n = 3
+Q = 429.0e3
+V = 15.0e-6</desc>
+    </rect>
+    <rect id="lithospheric_mantle" inkscape:label="lithospheric_mantle" x="0" y="0" width="1600" height="195" style="fill:#9bc29b;stroke:none">
+      <title id="title2">Lithospheric mantle</title>
+      <desc id="desc2">dry olivine
+C = 1.0
+rho = 3330.0
+H = 0.0
+h = 120 km
+A = 2.4168e-15
+n = 3.5
+Q = 540.0e3
+V = 25.0e-6</desc>
+    </rect>
+    <rect id="lower_crust" inkscape:label="lower_crust" x="0" y="0" width="1600" height="75" style="fill:#f0d1bc;stroke:none">
+      <title id="title3">Lower crust</title>
+      <desc id="desc3">wet quartz
+C = 100.0
+rho = 2800.0
+H = 0.19e-6 / 2800.0
+h = 10 km
+A = 8.574e-28
+n = 4.0
+Q = 222.0e3
+V = 0.0</desc>
+    </rect>
+    <rect id="upper_crust" inkscape:label="upper_crust" x="0" y="0" width="1600" height="65" style="fill:#e49c7c;stroke:none">
+      <title id="title4">Upper crust</title>
+      <desc id="desc4">wet quartz
+C = 1.0
+rho = 2700.0
+H = 1.67e-6 / 2700.0
+h = 25 km
+A = 8.574e-28
+n = 4.0
+Q = 222.0e3
+V = 0.0</desc>
+    </rect>
+    <rect id="air" inkscape:label="air" x="0" y="0" width="1600" height="40" style="fill:#ffffff;stroke:none">
+      <title id="title5">Sticky air</title>
+      <desc id="desc5">air
+C = 1.0
+rho = 1.0
+H = 0.0
+h = 40 km
+A = 1.0e-18
+n = 1.0
+Q = 0.0
+V = 0.0</desc>
+    </rect>
+  </g>
+  <g
+     inkscape:groupmode="layer"
+     id="layer_setup"
+     inkscape:label="domain">
+    <rect
+       id="setup"
+       inkscape:label="setup"
+       x="0"
+       y="0"
+       width="1600"
+       height="700"
+       style="fill:none;stroke:#ff0000;stroke-width:1">
+      <title
+         id="title_setup">Model setup</title>
+      <desc
+         id="desc_setup">Lx = 1600 km
+Lz = 700 km
+dx = 2 km
+dz = 2 km
+regime = quiescence
+time_max = 50 Myr
+magmatism = on
+magmatism_extraction = off
+magmatism_Ts0 = 1080
+custom_temp_field = build_temp.py</desc>
+    </rect>
+  </g>
+</svg>

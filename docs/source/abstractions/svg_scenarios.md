@@ -107,7 +107,8 @@ classDiagram
 *   **`SVGChecks` (extends `InputChecks`, `inputs/checks.py`):** checks the settings and the drawing (setup shape,
     stack of layers, combinations of settings) and raises `SVGInputError` with a message that names the parameter.
 *   **`SVGScenario` (`inputs/svg/scenario.py`):** reads the settings (argument > SVG > default), chooses the water and
-    magmatic layers, and drives the generic builders: the temperature (`solve_heat_2D` by default, or `solve_heat_1D`),
+    magmatic layers, and drives the generic builders: the temperature (`solve_heat_2D` by default, or `solve_heat_1D`,
+    changed by the `build_temperature` of the script `custom_temp_field`, e.g. with `add_plume`),
     the velocity of the kinematic regime (`set_kinematic_regime`, or the `build_velocity` of the script
     `custom_veloc_field`) and the files (`write_all`).
 *   **`reader` (`inputs/svg/reader.py`):** turns the shapes into a single stack of layers, bottom to top, with the

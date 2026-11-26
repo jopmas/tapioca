@@ -71,8 +71,9 @@ quiescence_time (e.g. 0 Myr), magmatism (on or off), magmatism_extraction (on or
 magmatism_Ts0 (e.g. 1080, in oC), heat_capacity (e.g. 1250, in J/kg/K), thermal_expansion_coefficient
 (e.g. 3.28e-5, in 1/K), gravity_acceleration (e.g. 10, in m/s2), preset_initial_temperature (folder or .nc file of a
 preliminary scenario whose final thermal state is used as initial temperature), preset_temperature_mode
-(profile or field), preset_time (e.g. 10 Myr) and custom_veloc_field
-(Python script that builds the velocity field instead of the kinematic regime, see SVGScenario.build_velocity).
+(profile or field), preset_time (e.g. 10 Myr), custom_veloc_field
+(Python script that builds the velocity field instead of the kinematic regime, see SVGScenario.build_velocity) and
+custom_temp_field (Python script that changes the initial temperature, e.g. a plume, see SVGScenario.build_temperature).
 code (mandyoc or mandyocjll) is the code that the run script calls.
 The surface processes are also settings of the experiment: sp_surface_processes (True or False), sp_mode (e.g.
 theunissen_sedimentation), the layers of sediments deposited by Mandyoc (sediment_layer, ti_sed, tf_sed, dt_sed,
@@ -163,7 +164,7 @@ EXPERIMENT_KEYS = ("regime", "velocity", "moving_boundary", "time_max", "quiesce
                    "magmatism", "magmatism_extraction", "magmatism_Ts0", "preset_initial_temperature",
                    "preset_temperature_mode", "preset_time", "temperature_solver", "water_layer", "magmatic_layer",
                    "heat_capacity", "thermal_expansion_coefficient", "gravity_acceleration",
-                   "custom_veloc_field", "code",
+                   "custom_veloc_field", "custom_temp_field", "code",
                    # surface processes and sedimentation (see SVGScenario)
                    "sp_surface_processes", "sp_mode", "sp_format", "sediment_layer", "ti_sed", "tf_sed", "dt_sed",
                    "sedimentation_rate", "Ld", "base_level") + SP_PARAMS  # settings of the experiment in the domain description

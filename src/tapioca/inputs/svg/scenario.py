@@ -30,6 +30,7 @@ experiment:
     preset_temperature_mode = profile          (profile or field)
     preset_time = 10 Myr
     custom_veloc_field = build_veloc.py        (Python script with build_velocity(scenario))
+    custom_temp_field = build_temp.py          (Python script with build_temperature(scenario), e.g. a plume)
     temperature_solver = 2D                    (2D or columns)
     code = mandyoc                             (mandyoc or mandyocjll: code that the run script calls)
     min_thickness = 1 km
@@ -202,6 +203,10 @@ class SVGScenario(SVGChecks, VerboseExtension):
     custom_veloc_field : str, optional
         Python script that builds the velocity field instead of the kinematic regime (see build_velocity). A
         relative path in the SVG is relative to the folder of the SVG. Default: none (kinematic regime).
+    custom_temp_field : str, optional
+        Python script that changes the initial temperature after it is built (e.g. a thermal anomaly at the base
+        or a mantle plume, see build_temperature). A relative path in the SVG is relative to the folder of the SVG.
+        Default: none.
     temperature_solver : str, optional
         Steady-state conduction in the lithosphere of the conductive model: '2D' (the whole lithosphere at once,
         so heat also flows sideways where the layers change along x) or 'columns' (each column alone).
@@ -633,6 +638,14 @@ class SVGScenario(SVGChecks, VerboseExtension):
                 self._fail("custom_veloc_field: the quiescence regime has no velocity at the boundaries.")
         self.custom_veloc_field = custom
 
+        custom = setting('custom_temp_field', None)
+        if(custom is not None): #a relative path in the SVG is relative to the folder of the SVG
+            base = os.path.dirname(os.path.abspath(self.svg_file)) if(self.source['custom_temp_field'] == 'SVG') else None
+            custom = self._check_path('custom_temp_field', custom, base)
+            if(not os.path.isfile(custom) or not custom.endswith('.py')):
+                self._fail(f"custom_temp_field must be a Python script (.py): {custom}")
+        self.custom_temp_field = custom
+
         self.temperature_solver = self._check_choice('temperature_solver', setting('temperature_solver', '2D'),
                                                      ['2D', 'columns'], aliases={'1D': 'columns'})
 
@@ -681,6 +694,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
                         f"({self.source['preset_initial_temperature']})")
         if(self.custom_veloc_field is not None):
             self._print_verbose(f"Velocity field from {self.custom_veloc_field} ({self.source['custom_veloc_field']})")
+        if(self.custom_temp_field is not None):
+            self._print_verbose(f"Initial temperature changed by {self.custom_temp_field} ({self.source['custom_temp_field']})")
 
     def _rates_text(self):
         '''sedimentation_rates as text: the rate, or "t1 Myr: rate1, t2 Myr: rate2, ..." when it changes.'''
@@ -844,6 +859,9 @@ class SVGScenario(SVGChecks, VerboseExtension):
           temperature_difference). No solver is run, so units with rho = 0 (e.g. van Keken et al., 1997) need no
           conductivity.
 
+        With custom_temp_field, the script changes the field built above (e.g. a plume or a thermal anomaly at the
+        base, see _build_custom_temperature).
+
         The field is also the temperature of the builder (self.builder.DTree.fields.temperature).
         '''
         ## NOTE (Claude): the LAB is given as its z along x (column by column, _find_lab) instead of the interface
@@ -899,6 +917,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
             self._print_verbose(f"Preset of initial temperature: {self.preset_source}")
             self._print_verbose(f"\tsticky air of the preliminary scenario: {sa_preset/1.0e3:.0f} km; reference lithosphere: "
                         f"{litho_preset/1.0e3:.0f} km (other lithosphere thicknesses are adapted)")
+        if(self.custom_temp_field is not None):
+            self._build_custom_temperature()
         self.builder.create_temperature_field(self.temperature_builder)
         self.T = self.builder.DTree.fields.temperature.values #(Nz, Nx)
         return self.T
@@ -955,6 +975,48 @@ class SVGScenario(SVGChecks, VerboseExtension):
                 self._fail(f"custom_veloc_field: {path} has no function build_velocity(scenario).")
             self._custom_velocity_module = module
         return self._custom_velocity_module
+
+    def _load_custom_temperature(self):
+        '''Module of the script custom_temp_field (loaded once).'''
+        if(getattr(self, '_custom_temperature_module', None) is None):
+            path = self.custom_temp_field
+            name = 'tapioca_custom_temp_' + os.path.splitext(os.path.basename(path))[0]
+            spec = importlib.util.spec_from_file_location(name, path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            if(not callable(getattr(module, 'build_temperature', None))):
+                self._fail(f"custom_temp_field: {path} has no function build_temperature(scenario).")
+            self._custom_temperature_module = module
+        return self._custom_temperature_module
+
+    def _build_custom_temperature(self):
+        '''
+        Initial temperature changed by the script custom_temp_field. The script defines
+
+            build_temperature(scenario) -> TemperatureFieldBuilder
+
+        which receives the scenario with the temperature already built (scenario.temperature_builder: steady-state
+        conduction, preset or isothermal), changes it (e.g. with TemperatureFieldBuilder.add_plume,
+        add_basal_anomaly or add_thermal_anomaly, or by changing scenario.temperature_builder.temperature, of shape
+        (Nz, Nx), z positive upwards) and returns it; the field is then created by
+        scenario.builder.create_temperature_field. Optionally, infos(scenario) returns a list of lines that
+        describe the change in infos_<folder>.txt, and write_files(scenario, output_dir) writes other input files
+        and returns their names, which write_all zips with the inputs.
+        '''
+        module = self._load_custom_temperature()
+        t = module.build_temperature(self)
+        if(not isinstance(t, TemperatureFieldBuilder)):
+            self._fail(f"custom_temp_field: build_temperature of {self.custom_temp_field} must return a TemperatureFieldBuilder.")
+        T = np.asarray(t.temperature.values)
+        if(T.shape != (self.Nz, self.Nx) or not np.all(np.isfinite(T))):
+            self._fail(f"custom_temp_field: the temperature of {self.custom_temp_field} must be finite, of shape "
+                       f"(Nz, Nx) = ({self.Nz}, {self.Nx}) (found {T.shape}).")
+        if(T.min() < 0):
+            print(f"Warning: the temperature of {os.path.basename(self.custom_temp_field)} goes down to {T.min():.1f} oC.")
+        if(not hasattr(t, 't_pot')):
+            t.t_pot = self.TP
+        self.temperature_builder = t
+        return t
 
     def _build_custom_velocity(self):
         '''
@@ -1233,10 +1295,10 @@ class SVGScenario(SVGChecks, VerboseExtension):
             if(not os.path.exists(target) or not os.path.samefile(self.svg_file, target)):
                 shutil.copy(self.svg_file, target)
 
-        if(copy_svg and self.custom_veloc_field is not None): #the script of the velocity field goes with the SVG
-            target = path(os.path.basename(self.custom_veloc_field))
-            if(not os.path.exists(target) or not os.path.samefile(self.custom_veloc_field, target)):
-                shutil.copy(self.custom_veloc_field, target)
+        for script in self._custom_scripts(): #the scripts of the velocity and temperature fields go with the SVG
+            target = path(os.path.basename(script))
+            if(copy_svg and (not os.path.exists(target) or not os.path.samefile(script, target))):
+                shutil.copy(script, target)
 
         builder = self.builder
         builder.path = output_dir
@@ -1250,6 +1312,12 @@ class SVGScenario(SVGChecks, VerboseExtension):
         if(self.T is None):
             self.build_temperature()
         builder.export_field('temperature', header="T1\nT2\nT3\nT4")
+        #other files written by the scripts of custom_veloc_field and custom_temp_field (e.g. bcv_0.txt)
+        self.custom_files = []
+        if(self.custom_temp_field is not None):
+            module = self._load_custom_temperature()
+            if(callable(getattr(module, 'write_files', None))):
+                self.custom_files += [os.path.basename(f) for f in (module.write_files(self, output_dir) or [])]
 
         if(self.velocity_from_ascii):
             if(self.VX is None):
@@ -1262,12 +1330,10 @@ class SVGScenario(SVGChecks, VerboseExtension):
             np.savetxt(path("vel_bc.txt"), np.array([v0, vf]).T)
             np.savetxt(path("velz_bc.txt"), self.VZ[(self.z == 0)].T)
             builder.export_field('velocity', header="v1\nv2\nv3\nv4")
-            #other files of the velocity written by the script of custom_veloc_field (e.g. bcv_0.txt)
-            self.custom_files = []
             if(self.custom_veloc_field is not None):
                 module = self._load_custom_velocity()
                 if(callable(getattr(module, 'write_files', None))):
-                    self.custom_files = [os.path.basename(f) for f in (module.write_files(self, output_dir) or [])]
+                    self.custom_files += [os.path.basename(f) for f in (module.write_files(self, output_dir) or [])]
 
         #files of conditions that change in time (scale_bcv.txt, files of the surface processes), written by the
         #builder with the others set in it by script (builder.set_time_conditions)
@@ -1299,6 +1365,10 @@ class SVGScenario(SVGChecks, VerboseExtension):
                    'base_level.txt', 'numerical_setup.png', 'initial_temperature.png',
                    'run_linux.sh', 'run_mac.sh', 'run_hypatia.sh', '0_organize_outputs.sh', 'zipper.sh']
 
+    def _custom_scripts(self):
+        '''Scripts of custom_veloc_field and custom_temp_field given to the scenario.'''
+        return [script for script in (self.custom_veloc_field, self.custom_temp_field) if(script is not None)]
+
     def zip_inputs(self, output_dir='.'):
         '''
         Zip the input files of the scenario in output_dir/inputs_<folder>.zip: the files of write_all that are
@@ -1309,8 +1379,7 @@ class SVGScenario(SVGChecks, VerboseExtension):
         target = os.path.join(output_dir, f'inputs_{name}.zip')
         files = (self.INPUT_FILES + list(getattr(self.builder, 'time_conditions', {}))
                  + [f'infos_{name}.txt', os.path.basename(self.svg_file)])
-        if(self.custom_veloc_field is not None):
-            files.append(os.path.basename(self.custom_veloc_field))
+        files += [os.path.basename(script) for script in self._custom_scripts()]
         files += getattr(self, 'custom_files', [])
         files = [fname for fname in dict.fromkeys(files) if os.path.isfile(os.path.join(output_dir, fname))]
         with zipfile.ZipFile(target, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
@@ -1383,6 +1452,11 @@ class SVGScenario(SVGChecks, VerboseExtension):
         elif(hasattr(self, 'preset_source')):
             lines += [f"\tPreliminary scenario: {self.preset_source}",
                       f"\tReference lithosphere of the preliminary scenario: {self.thickness_litho_preset/1.0e3:.0f} km"]
+        if(self.custom_temp_field is not None):
+            lines.append(f"\tChanged by the custom temperature field: {self.custom_temp_field}")
+            module = self._load_custom_temperature()
+            if(callable(getattr(module, 'infos', None))):
+                lines += [f"\t\t{line}" for line in module.infos(self)]
         lines += [f"\tHeat capacity: {self.heat_capacity:g} J/kg/K",
                   f"\tThermal expansion coefficient: {self.thermal_expansion_coefficient:g} 1/K",
                   f"\tGravity: {self.gravity_acceleration:g} m/s2"]

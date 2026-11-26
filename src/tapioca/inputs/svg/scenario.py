@@ -1208,7 +1208,6 @@ class SVGScenario(SVGChecks, VerboseExtension):
         on = lambda key: str(params.get(key, False)).lower() in ('true', 'on')
         found = [key for key in MANDYOCJLL_UNSUPPORTED if on(key)]
         found += ['RK4'] if(str(params.get('RK4', 'Euler')) != 'Euler') else []
-        found += ['dimensions'] if(int(params.get('dimensions', 2)) != 2) else []
         return found
 
     def write_all(self, output_dir='.', plots=True, copy_svg=True, scripts=True, system=None, ncores=None,

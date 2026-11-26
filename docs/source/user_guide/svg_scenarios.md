@@ -80,8 +80,8 @@ tapioca-svg rifting.svg -o rifting --code mandyocjll --system mac --mandyoc-opti
 - the outputs are one `.zarr` per variable, so there is no `0_organize_outputs.sh`. The post-processing creates the
   `.nc` files with `tools/zarr2nc.py` of mandyocjll, makes the snapshots and the video and zips the scenario; the
   `.zarr` outputs are kept. If the run fails, the script stops before it;
-- the input files are the same for both codes. mandyocjll is 2D and does not have every option of Mandyoc: tapioca
-  warns about the options of the scenario that will stop it (RK4, 3D).
+- the input files are the same for both codes. mandyocjll does not have every option of Mandyoc: tapioca
+  warns about the options of the scenario that will stop it (RK4).
 
 
 (run-on-hypatia)=

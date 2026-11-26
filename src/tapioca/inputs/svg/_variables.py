@@ -70,7 +70,7 @@ NO_POST_PROCESSING_SCRIPT = '''
 #scenario with plot_snapshots.py and frames_generator.py of post_processing (https://github.com/jopmas/post_processing),
 #then the zip of the scenario (zipper.sh) and the removal of the output files that are in the zip.
 POST_PROCESSING_SCRIPT = '''
-# Post-processing: .nc files (Julia scripts of tapioca), snapshots and video of the scenario (plot_snapshots.py
+# Post-processing: .nc files (Julia scripts of tapioca, or zarr2netcdf.py for the Zarr outputs), snapshots and video of the scenario (plot_snapshots.py
 # and frames_generator.py of post_processing), zip of the scenario and removal of the output files.
 # TAPIOCA_DIR, POST_PROCESSING_DIR, JULIA and PYTHON set in the environment override the values below.
 # A step is skipped, with a message, if what it needs is not found.
@@ -79,7 +79,13 @@ POST_PROCESSING_DIR=${POST_PROCESSING_DIR:-@POST_PROCESSING_DIR@}
 JULIA=${JULIA:-julia}
 PYTHON=${PYTHON:-python}
 
-if command -v "$JULIA" > /dev/null && [ -f "$TAPIOCA_DIR/src/postrunning/meshes2netcdf.jl" ]; then
+# Zarr outputs of Mandyoc (zarr_output = True in param.txt, mandyoc_<step>.zarr): zarr2netcdf.py writes the same
+# .nc files as the Julia scripts below, which convert the text outputs
+ZARR_STEPS=$(find . -maxdepth 1 -type d -name "mandyoc_*.zarr" | sed -E 's|.*mandyoc_([0-9]+)\\.zarr|\\1|' | grep -E '^[0-9]+$' | sort -n)
+if [ -n "$ZARR_STEPS" ] && [ -f "$TAPIOCA_DIR/src/postrunning/zarr2netcdf.py" ]; then
+    # last step as reference step of the particles, as for the text outputs
+    "$PYTHON" "$TAPIOCA_DIR/src/postrunning/zarr2netcdf.py" "$PWD" "$(echo "$ZARR_STEPS" | tail -1)"
+elif command -v "$JULIA" > /dev/null && [ -f "$TAPIOCA_DIR/src/postrunning/meshes2netcdf.jl" ]; then
     "$JULIA" -t $NUMBER_OF_CORES "$TAPIOCA_DIR/src/postrunning/meshes2netcdf.jl" "$PWD"
     if [ -d steps ]; then
         # last step as reference step: the tracking scripts of post_processing select the particles there

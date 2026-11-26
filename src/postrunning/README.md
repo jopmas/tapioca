@@ -46,3 +46,18 @@ srun -N 1 -c THREADS --mem=RAM julia -t THREADS $PATH_TO_TAPIOCA/tapioca/src/pos
 ```
 
 The `REFERENCE_TIME_STEP` is the time step that will be used to get the required IDs. If this is the final step of the simulation, only the particles within the domain at the end will be tracked. On the other hand, if it is 0, all the initial particles will be tracked.
+
+## Zarr outputs of Mandyoc
+
+With `zarr_output = True` in `param.txt` (Mandyoc of the branch `zarr_outputs` of
+[jopmas/mandyoc_jpm](https://github.com/jopmas/mandyoc_jpm)), each printed step is one `mandyoc_<step>.zarr` store
+with the grid variables, the particles, the lithology and the surface, and there are no text outputs to organize.
+`zarr2netcdf.py` writes from them the same files as `meshes2netcdf.jl` and `particles2netcdf.jl` (same names,
+dimensions, data types, attributes and compression, and `times.csv`), with the values in full precision:
+
+```bash
+python $PATH_TO_TAPIOCA/tapioca/src/postrunning/zarr2netcdf.py $SCENARIO_PATH REFERENCE_TIME_STEP
+```
+
+It needs `zarr`, `h5netcdf` and `numba` (environment `tapioca`). The steps are read in parallel threads
+(`ZARR2NC_THREADS`, default: the number of cores). The Julia scripts are unchanged and keep converting the text outputs.

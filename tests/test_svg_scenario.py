@@ -86,6 +86,14 @@ def test_run_script_post_processing(written):
     assert run.index("mpirun") < run.index("meshes2netcdf.jl") < run.index("bash zipper.sh") < run.index("rm -rf")
 
 
+def test_run_script_post_processing_of_zarr_outputs(written):
+    _, _, folder = written
+    run = (folder / "run_linux.sh").read_text()
+    # zarr2netcdf.py for the mandyoc_<step>.zarr outputs, the Julia scripts otherwise
+    assert run.index("mpirun") < run.index("zarr2netcdf.py") < run.index("meshes2netcdf.jl") < run.index("bash zipper.sh")
+    assert 'elif command -v "$JULIA"' in run
+
+
 def test_param_txt_matches_the_scenario(written):
     _, scenario, folder = written
     params = _read_params(folder)

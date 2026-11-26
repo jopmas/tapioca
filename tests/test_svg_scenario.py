@@ -455,9 +455,11 @@ def test_run_script_mandyocjll(tmp_path, system, post_processing):
     path = tmp_path / f"run_{system}.sh"
     run = path.read_text()
     assert re.search(r"@[A-Z_]+@", run) is None
-    assert '"$MANDYOCJLL" -n $NUMBER_OF_CORES $MANDYOC_OPTIONS' in run and "-seed 0,2" in run
+    launch = ('mpirun -n $NUMBER_OF_CORES --map-by :OVERSUBSCRIBE "$MANDYOCJLL" $MANDYOC_OPTIONS' if(system == "hypatia")
+              else '"$MANDYOCJLL" -n $NUMBER_OF_CORES $MANDYOC_OPTIONS')
+    assert launch in run and "-seed 0,2" in run
     assert "MANDYOCJLL=${MANDYOCJLL:-$HOME/opt/mandyocjll/bin/mandyocjll}" in run
-    for text in ["mpirun -n", "0_organize_outputs.sh", "PETSC_DIR", "meshes2netcdf.jl", "rm -rf"]:
+    for text in ["mpirun -n" if(system != "hypatia") else "PETSC_ARCH", "0_organize_outputs.sh", "PETSC_DIR", "meshes2netcdf.jl", "rm -rf"]:
         assert text not in run, text
     assert ("caffeinate" in run) == (system == "mac") and ("#SBATCH --ntasks=3" in run) == (system == "hypatia")
     assert ("zarr2nc.py" in run) == post_processing and ("plot_snapshots.py" in run) == post_processing

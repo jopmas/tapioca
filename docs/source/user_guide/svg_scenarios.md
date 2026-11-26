@@ -72,7 +72,8 @@ tapioca-svg rifting.svg -o rifting --code mandyocjll --system mac --mandyoc-opti
 ```
 
 - the script runs `$MANDYOCJLL -n <ncores>` (default: `$HOME/opt/mandyocjll/bin/mandyocjll`), which starts the MPI
-  processes itself, with the MPI it uses. PETSc is the one of its `LocalPreferences.toml`, so `PETSC_DIR` and
+  processes itself, with the MPI it uses; on Hypatia, `mpirun -n <ncores> --map-by :OVERSUBSCRIBE $MANDYOCJLL`, with the
+  `mpirun` of the `openmpi` module, since OpenMPI refuses the `mpiexec` started inside a SLURM job. PETSc is the one of its `LocalPreferences.toml`, so `PETSC_DIR` and
   `PETSC_ARCH` are not used;
 - the outputs are one `.zarr` per variable, so there is no `0_organize_outputs.sh`. The post-processing creates the
   `.nc` files with `tools/zarr2nc.py` of mandyocjll, makes the snapshots and the video and zips the scenario; the

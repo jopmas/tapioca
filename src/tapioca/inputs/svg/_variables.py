@@ -210,7 +210,10 @@ MANDYOCJLL_HYPATIA_SCRIPT = HYPATIA_SCRIPT[:HYPATIA_SCRIPT.index('# Runs Mandyoc
 # Created by tapioca.
 module purge
 @MODULES@
-''' + _MANDYOCJLL_RUN.replace('@CORES@', '${SLURM_NTASKS:-@NCORES@}') + '''@CONDA@@POST_PROCESSING@'''
+''' + _MANDYOCJLL_RUN.replace('@CORES@', '${SLURM_NTASKS:-@NCORES@}').replace(
+    '@LAUNCHER@"$MANDYOCJLL" -n $NUMBER_OF_CORES',
+    # in a SLURM job, the mpiexec started by -n is refused by the binding of OpenMPI: mpirun of the module, as for Mandyoc
+    'mpirun -n $NUMBER_OF_CORES --map-by :OVERSUBSCRIBE "$MANDYOCJLL"') + '''@CONDA@@POST_PROCESSING@'''
 
 #Post-processing of the runs of mandyocjll: the .nc files with tools/zarr2nc.py of mandyocjll, then the snapshots, the
 #video and the zip of POST_PROCESSING_SCRIPT. The .zarr outputs are kept.

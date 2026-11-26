@@ -487,7 +487,7 @@ def test_code_of_the_setup_shape(tmp_path, capsys):
     args = [str(svg), "--dx", "10", "--dz", "10", "--no-plots", "--system", "linux"]
     cli.main(args + ["-o", str(tmp_path / "svg")])
     assert "MANDYOCJLL" in (tmp_path / "svg" / "run_linux.sh").read_text()
-    assert "will stop: magmatism" in capsys.readouterr().out  # magmatism = on in the SVG
+    assert "will stop" not in capsys.readouterr().out  # magmatism = on in the SVG runs in mandyocjll
     cli.main(args + ["-o", str(tmp_path / "cli"), "--code", "mandyoc"])
     assert "will stop" not in capsys.readouterr().out
     assert "MANDYOCJLL" not in (tmp_path / "cli" / "run_linux.sh").read_text()
@@ -497,9 +497,9 @@ def test_code_of_the_setup_shape(tmp_path, capsys):
 
 def test_mandyocjll_warns_about_unsupported_options(tmp_path, capsys):
     scenario = build_scenario("rifting", code="mandyocjll", magmatism="on")
-    scenario.write_all(str(tmp_path), plots=False, system="linux", RK4="Runge-Kutta")
+    scenario.write_all(str(tmp_path), plots=False, system="linux", RK4="Runge-Kutta", nondimensionalization="True")
     out = capsys.readouterr().out
-    assert "will stop: magmatism, RK4" in out
+    assert "will stop: nondimensionalization, RK4" in out  # magmatism runs in mandyocjll
 
 
 def _thermal_state(folder):

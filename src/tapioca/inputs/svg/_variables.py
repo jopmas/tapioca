@@ -79,12 +79,10 @@ POST_PROCESSING_DIR=${POST_PROCESSING_DIR:-@POST_PROCESSING_DIR@}
 JULIA=${JULIA:-julia}
 PYTHON=${PYTHON:-python}
 
-# Zarr outputs of Mandyoc (zarr_output = True in param.txt, mandyoc_<step>.zarr): zarr2netcdf.py writes the same
-# .nc files as the Julia scripts below, which convert the text outputs
-ZARR_STEPS=$(find . -maxdepth 1 -type d -name "mandyoc_*.zarr" | sed -E 's|.*mandyoc_([0-9]+)\\.zarr|\\1|' | grep -E '^[0-9]+$' | sort -n)
-if [ -n "$ZARR_STEPS" ] && [ -f "$TAPIOCA_DIR/src/postrunning/zarr2netcdf.py" ]; then
-    # last step as reference step of the particles, as for the text outputs
-    "$PYTHON" "$TAPIOCA_DIR/src/postrunning/zarr2netcdf.py" "$PWD" "$(echo "$ZARR_STEPS" | tail -1)"
+# Zarr outputs of Mandyoc (zarr_output = True in param.txt: one <variable>.zarr per variable, as mandyocjll):
+# zarr2netcdf.py writes the same .nc files as the Julia scripts below, which convert the text outputs
+if [ -d temperature.zarr ] && [ -f "$TAPIOCA_DIR/src/postrunning/zarr2netcdf.py" ]; then
+    "$PYTHON" "$TAPIOCA_DIR/src/postrunning/zarr2netcdf.py" "$PWD"
 elif command -v "$JULIA" > /dev/null && [ -f "$TAPIOCA_DIR/src/postrunning/meshes2netcdf.jl" ]; then
     "$JULIA" -t $NUMBER_OF_CORES "$TAPIOCA_DIR/src/postrunning/meshes2netcdf.jl" "$PWD"
     if [ -d steps ]; then

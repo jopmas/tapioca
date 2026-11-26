@@ -50,14 +50,17 @@ The `REFERENCE_TIME_STEP` is the time step that will be used to get the required
 ## Zarr outputs of Mandyoc
 
 With `zarr_output = True` in `param.txt` (Mandyoc of the branch `zarr_outputs` of
-[jopmas/mandyoc_jpm](https://github.com/jopmas/mandyoc_jpm)), each printed step is one `mandyoc_<step>.zarr` store
-with the grid variables, the particles, the lithology and the surface, and there are no text outputs to organize.
-`zarr2netcdf.py` writes from them the same files as `meshes2netcdf.jl` and `particles2netcdf.jl` (same names,
-dimensions, data types, attributes and compression, and `times.csv`), with the values in full precision:
+[jopmas/mandyoc_jpm](https://github.com/jopmas/mandyoc_jpm)), Mandyoc writes one Zarr v2 store per variable, appended
+at each printed step, in the layout of mandyocjll: `density.zarr`, ..., `velocity.zarr` (`vx`, `vz`),
+`lithology.zarr`, `particles_trajectories.zarr` and `surface.zarr`, with the names, dimensions, units and types of
+the `.nc` files, so they can be read directly (`xr.open_zarr("temperature.zarr")`), also while the run goes on.
+There are no text outputs to organize. `zarr2netcdf.py` writes `<variable>.nc` from each store, with the compression
+of the Julia scripts, and `times.csv`:
 
 ```bash
-python $PATH_TO_TAPIOCA/tapioca/src/postrunning/zarr2netcdf.py $SCENARIO_PATH REFERENCE_TIME_STEP
+python $PATH_TO_TAPIOCA/tapioca/src/postrunning/zarr2netcdf.py $SCENARIO_PATH [variable ...]
 ```
 
-It needs `zarr`, `h5netcdf` and `numba` (environment `tapioca`). The steps are read in parallel threads
-(`ZARR2NC_THREADS`, default: the number of cores). The Julia scripts are unchanged and keep converting the text outputs.
+It needs `zarr` and `h5netcdf` (environment `tapioca`); the times are read in parallel threads (`ZARR2NC_THREADS`,
+default: the number of cores). The trajectories follow the particles printed in step 0 (`reference_timestep = 0`, as
+in mandyocjll) and also have their `strain`. The Julia scripts are unchanged and keep converting the text outputs.

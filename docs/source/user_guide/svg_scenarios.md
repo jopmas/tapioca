@@ -39,8 +39,8 @@ It also receives the scripts to run the scenario (`--no-scripts` skips them):
   the script post-processes the scenario (`--no-post-processing` skips it):
   1. creates the `.nc` files with `meshes2netcdf.jl` and, if there is a `steps/` folder, `particles2netcdf.jl` with
      the last step as reference step (`julia -t <ncores>`);
-     if the outputs are Zarr stores (`mandyoc_<step>.zarr`, `zarr_output = True` in `param.txt`), it creates the same
-     files with `src/postrunning/zarr2netcdf.py` instead;
+     if the outputs are Zarr stores (`zarr_output = True` in `param.txt`: one `<variable>.zarr` per variable, as in
+     mandyocjll), it creates the same files with `src/postrunning/zarr2netcdf.py` instead;
   2. makes the snapshots (`plot_snapshots.py`) and the frames and the video (`frames_generator.py`) of the
      scenario with the scripts of [post_processing](https://github.com/jopmas/post_processing), if
      `lithology.nc` was created (`export_lithology = True`);

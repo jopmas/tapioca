@@ -166,6 +166,7 @@ Toda configuração também pode ser dada na linha de comando (por exemplo `--re
 | `water_layer`, `magmatic_layer` | nenhuma, basalto no topo | camadas de água e de magma (rótulo ou ID) |
 | `preset_initial_temperature`, `preset_temperature_mode` | nenhuma, `profile` | temperatura de um cenário preliminar |
 | `custom_veloc_field` | nenhum | script em Python que constrói a velocidade |
+| `custom_temp_field` | nenhum | script em Python que altera a temperatura inicial (pluma, base quente, ...) |
 | `temperature_solver` | `2D` | `2D` (toda a litosfera) ou `columns` (cada coluna) |
 | `code` | `mandyoc` | código chamado pelo script de execução: `mandyoc` ou `mandyocjll` |
 | `min_thickness`, `sampling` | 1 km, 100 m | camadas finas removidas; amostragem vertical do desenho |
@@ -202,6 +203,36 @@ Com `preset_initial_temperature` (a pasta de um cenário preliminar), a temperat
 
 ![Temperatura inicial do cenário `rifting` (`initial_temperature.png`).](figures/temperature_rifting.png)
 
+## Temperatura própria
+
+`custom_temp_field` aponta para um script em Python que define `build_temperature(scenario)` (na linha de comando, `--custom-temp-field`). O script recebe o cenário com a temperatura inicial já calculada (condução, preset ou isotérmica) em `scenario.temperature_builder`, altera essa temperatura e devolve o construtor. Como no `custom_veloc_field`, `infos(scenario)` e `write_files(scenario, output_dir)` são opcionais, e o script é copiado para a pasta do cenário e entra no `inputs_<pasta>.zip`. Os dois scripts podem ser usados juntos.
+
+O `TemperatureFieldBuilder` tem três métodos para as anomalias mais comuns (z positivo para cima: `-Lz` na base e 0 no topo do domínio). Nenhum deles altera o sticky air:
+
+| Método | Anomalia |
+|---|---|
+| `add_thermal_anomaly(dT, x0, z0, rx, rz=None)` | elipse centrada em (x0, z0), por exemplo um bloco quente ou frio |
+| `add_plume(dT, x0, z_head, head_radius, head_rz=None, tail_radius=None, z_base=None)` | cabeça centrada em (x0, z_head) e conduto de `z_base` (padrão: a base) até a cabeça |
+| `add_basal_anomaly(dT, thickness, x0=None, width=None)` | camada quente (ou fria) na base, ao longo de toda a base ou em volta de x0 |
+
+Todos aceitam `shape` (`gaussian`, o padrão; `cosine`, que zera fora dos raios; ou `tophat`, de bordas abruptas) e `mode` (`add` soma `dT`; `set` leva a anomalia à temperatura `dT`). O Mandyoc costuma manter a temperatura da base no valor inicial, então uma anomalia basal continua aquecendo o manto por baixo durante a rodada.
+
+O exemplo `plume` (`examples/svg_scenarios/plume/build_temp.py`) põe uma pluma 250 °C mais quente que o manto no centro do domínio:
+
+```python
+def build_temperature(scenario):
+    t = scenario.temperature_builder                     # temperatura já calculada
+    z_surface = -float(scenario.thickness_sa.max())      # base do sticky air (z positivo para cima)
+    t.add_plume(250.0, x0=scenario.Lx / 2, z_head=z_surface - 300e3,
+                head_radius=80e3, tail_radius=25e3)
+    return t
+
+def infos(scenario):                                     # opcional: linhas do infos_<pasta>.txt
+    return ["pluma no centro do domínio"]
+```
+
+![Temperatura inicial do exemplo `plume`: litosfera continental de 155 km sobre uma pluma com a cabeça a 300 km de profundidade e o conduto desde a base do domínio, de 700 km.](figures/temperature_plume.png)
+
 ## Sedimentação, água e magma
 
 Com `sp_surface_processes = True` e um modo de sedimentação (`sp_mode = theunissen_sedimentation` ou `sedimentation_rate_limited`), o tapIOca acrescenta uma camada de sedimentos de espessura nula para cada intervalo `dt_sed` entre `ti_sed` e `tf_sed`, e escreve `sediment_layers.txt`, `sedimentation_rate.txt` e `base_level.txt` (ou `SP_vc.txt`, com `--sp-format SP_vc`). Os sedimentos, a água e o basalto extrusivo são desenhados uma vez, como moldes abaixo do domínio: suas formas só dão o material das camadas.
@@ -223,6 +254,7 @@ Os exemplos estão em `examples/svg_scenarios` (um por experimento) e `examples/
 | `accordion` | litosfera não cratônica entre dois crátons | accordion |
 | `quiescence` | quilha cratônica num domínio de 4000 km | quiescência, 1000 Myr |
 | `rifting_sedimentation` | crosta mais espessa no centro | rifting simétrico com sedimentação |
+| `plume` | litosfera continental de 155 km sobre uma pluma, num domínio de 700 km de profundidade | quiescência, 50 Myr, pluma de `build_temp.py` (`custom_temp_field`) |
 
 ```bash
 cd examples/svg_scenarios/rifting

@@ -166,6 +166,7 @@ Every setting can also be given on the command line (e.g. `--regime`, `--dx`) or
 | `water_layer`, `magmatic_layer` | none, basalt at the top | water and magmatic layers (label or ID) |
 | `preset_initial_temperature`, `preset_temperature_mode` | none, `profile` | temperature of a preliminary scenario |
 | `custom_veloc_field` | none | Python script that builds the velocity |
+| `custom_temp_field` | none | Python script that changes the initial temperature (plume, hot base, ...) |
 | `temperature_solver` | `2D` | `2D` (whole lithosphere) or `columns` (each column) |
 | `code` | `mandyoc` | code called by the run script: `mandyoc` or `mandyocjll` |
 | `min_thickness`, `sampling` | 1 km, 100 m | thin layers removed; vertical sampling of the drawing |
@@ -202,6 +203,36 @@ With `preset_initial_temperature` (the folder of a preliminary scenario), the in
 
 ![Initial temperature of the `rifting` scenario (`initial_temperature.png`).](figures/temperature_rifting.png)
 
+## Custom temperature
+
+`custom_temp_field` points to a Python script that defines `build_temperature(scenario)` (on the command line, `--custom-temp-field`). The script receives the scenario with the initial temperature already built (conduction, preset or isothermal) in `scenario.temperature_builder`, changes it and returns the builder. As in `custom_veloc_field`, `infos(scenario)` and `write_files(scenario, output_dir)` are optional, and the script is copied to the folder of the scenario and zipped in `inputs_<folder>.zip`. Both scripts may be used together.
+
+`TemperatureFieldBuilder` has three methods for the usual anomalies (z positive upwards: `-Lz` at the base and 0 at the top of the domain). None of them changes the sticky air:
+
+| Method | Anomaly |
+|---|---|
+| `add_thermal_anomaly(dT, x0, z0, rx, rz=None)` | ellipse centred at (x0, z0), e.g. a hot or cold blob |
+| `add_plume(dT, x0, z_head, head_radius, head_rz=None, tail_radius=None, z_base=None)` | head centred at (x0, z_head) and a tail from `z_base` (default: the base) up to the head |
+| `add_basal_anomaly(dT, thickness, x0=None, width=None)` | hot (or cold) layer at the base, along the whole base or around x0 |
+
+All of them take `shape` (`gaussian`, the default; `cosine`, which is zero outside the radii; or `tophat`, with sharp edges) and `mode` (`add` adds `dT`; `set` takes the anomaly to the temperature `dT`). Mandyoc usually keeps the temperature of the base at its initial value, so a basal anomaly also heats the mantle from below during the run.
+
+The `plume` example (`examples/svg_scenarios/plume/build_temp.py`) puts a plume 250 °C hotter than the mantle at the centre of the domain:
+
+```python
+def build_temperature(scenario):
+    t = scenario.temperature_builder                     # temperature already built
+    z_surface = -float(scenario.thickness_sa.max())      # base of the sticky air (z positive upwards)
+    t.add_plume(250.0, x0=scenario.Lx / 2, z_head=z_surface - 300e3,
+                head_radius=80e3, tail_radius=25e3)
+    return t
+
+def infos(scenario):                                     # optional: lines of infos_<folder>.txt
+    return ["plume at the centre of the domain"]
+```
+
+![Initial temperature of the `plume` example: a 155 km continental lithosphere above a plume with its head 300 km deep and its tail from the base of the 700 km deep domain.](figures/temperature_plume.png)
+
 ## Sedimentation, water and magma
 
 With `sp_surface_processes = True` and a sedimentation mode (`sp_mode = theunissen_sedimentation` or `sedimentation_rate_limited`), tapIOca adds one layer of sediments of zero thickness for each interval `dt_sed` between `ti_sed` and `tf_sed`, and writes `sediment_layers.txt`, `sedimentation_rate.txt` and `base_level.txt` (or `SP_vc.txt`, with `--sp-format SP_vc`). The sediments, the water and the extrusive basalt are drawn once, as templates below the domain: their shapes only give the material of the layers.
@@ -223,6 +254,7 @@ The examples are in `examples/svg_scenarios` (one per experiment) and `examples/
 | `accordion` | non-cratonic lithosphere between two cratons | accordion |
 | `quiescence` | cratonic keel in a 4000 km domain | quiescence, 1000 Myr |
 | `rifting_sedimentation` | crust thicker at the centre | symmetric rifting with sedimentation |
+| `plume` | 155 km continental lithosphere above a plume, in a 700 km deep domain | quiescence, 50 Myr, plume of `build_temp.py` (`custom_temp_field`) |
 
 ```bash
 cd examples/svg_scenarios/rifting

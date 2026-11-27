@@ -21,7 +21,7 @@ OUT = Path(__file__).resolve().parents[1] / "figures"
 OUT.mkdir(exist_ok=True)
 WORK = Path(sys.argv[1]).resolve(); WORK.mkdir(parents=True, exist_ok=True)
 STATE = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else None
-EXAMPLES = ["rifting", "compression", "accordion", "quiescence", "rifting_sedimentation", "rifting_with_basin"]
+EXAMPLES = ["rifting", "compression", "accordion", "quiescence", "rifting_sedimentation", "rifting_with_basin", "plume"]
 TAPIOCA_SVG = str(Path(sys.executable).parent / "tapioca-svg")      # the tools of the same environment
 
 

@@ -13,7 +13,7 @@ lang: pt
 O tapIOca (pacote `tapioca-mandyoc`) é um conjunto de ferramentas em Python para preparar e analisar modelos do [Mandyoc](https://github.com/ggciag/mandyoc), o código de elementos finitos que simula a evolução termomecânica da litosfera e do manto. Ele cobre as duas pontas de um modelo:
 
 - **antes da rodada**: cria os arquivos de entrada do Mandyoc (`interfaces.txt`, `param.txt`, `input_temperature_0.txt`, `input_velocity_0.txt` e os arquivos com condições que mudam no tempo), a partir de um script em Python ou de um cenário desenhado num arquivo SVG;
-- **depois da rodada**: converte as saídas em arquivos NetCDF e as organiza numa estrutura de dados navegável (`xarray.DataTree`), com funções de pós-processamento, como o tensor de tensões desviadoras e a seleção de partículas.
+- **depois da rodada**: converte as saídas em arquivos NetCDF e as organiza numa estrutura de dados navegável (`xarray.DataTree`), com funções de pós-processamento, como o tensor de esforços deviatóricos e a seleção de partículas.
 
 O tapIOca é a ligação entre o desenho de um cenário e as figuras finais. O mesmo cenário pode ser rodado no Mandyoc em C++ ou no mandyocjll, o porte do Mandyoc para Julia: os arquivos de entrada são os mesmos.
 
@@ -439,7 +439,7 @@ Os métodos `selectParticles_bytimerange`, `selectParticles_bycoords` e `selectP
 
 ## O acessor postproc
 
-O acessor `postproc` calcula grandezas sobre o `DataTree`. O tensor de tensões desviadoras de um fluido incompressível:
+O acessor `postproc` calcula grandezas sobre o `DataTree`. O tensor de esforços deviatóricos de um fluido incompressível:
 
 ```python
 scen.DTree.postproc.DeviatoricStressTensor()   # tau_xx, tau_zz, tau_xz e tau_J2 em /mesh/original
@@ -447,7 +447,7 @@ scen.DTree.postproc.DeviatoricStressTensor()   # tau_xx, tau_zz, tau_xz e tau_J2
 
 `tau_J2` $= \tfrac12(\tau_{xx}^2 + \tau_{zz}^2) + \tau_{xz}^2$ é o segundo invariante; ele tem a unidade da tensão ao quadrado (MPa²), embora o atributo `units` diga MPa. Para uma tensão em MPa, use $\sqrt{J_2}$.
 
-![Pós-processamento do cenário `examples/continental_rift` com `MandyocScen`: litologia em três tempos e $\sqrt{J_2}$ da tensão desviadora na rocha.](figures/postproc_continental_rift.png)
+![Pós-processamento do cenário `examples/continental_rift` com `MandyocScen`: litologia em três tempos e $\sqrt{J_2}$ do esforço deviatórico na rocha.](figures/postproc_continental_rift.png)
 
 # Guia para desenvolvedores
 

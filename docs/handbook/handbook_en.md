@@ -237,6 +237,8 @@ def infos(scenario):                                     # optional: lines of in
 
 With `sp_surface_processes = True` and a sedimentation mode (`sp_mode = theunissen_sedimentation` or `sedimentation_rate_limited`), tapIOca adds one layer of sediments of zero thickness for each interval `dt_sed` between `ti_sed` and `tf_sed`, and writes `sediment_layers.txt`, `sedimentation_rate.txt` and `base_level.txt` (or `SP_vc.txt`, with `--sp-format SP_vc`). The sediments, the water and the extrusive basalt are drawn once, as templates below the domain: their shapes only give the material of the layers.
 
+`sp_mode = fastscape` (only in mandyocjll, `--code mandyocjll`) replaces the surface processes of Mandyoc by FastScape: fluvial erosion (stream power law), hillslope diffusion and, with `fastscape_marine = True`, marine deposition. Its parameters (`fastscape_kf`, `fastscape_kd`, `fastscape_strip_width`, ..., in the units of FastScape, m and years; listed in `docs/parameters.md` of mandyocjll) go in the `setup` shape like the other parameters of the surface processes, and the deposited sediments are the layers of `sediment_layer` (`sp_format = ggciag`). With `--code mandyoc`, tapIOca warns that the C++ code stops at this mode.
+
 ![The `rifting_sedimentation` scenario: crust thicker at the centre and 70 layers of sediments of zero thickness.](figures/setup_rifting_sedimentation.png)
 
 `water_layer` gives the unit drawn as water, right below the air. With `magmatism` and `magmatism_extraction` on, a basalt layer of zero thickness is added at the top of the solid layers, unless `magmatic_layer` gives another one.

@@ -237,6 +237,8 @@ def infos(scenario):                                     # opcional: linhas do i
 
 Com `sp_surface_processes = True` e um modo de sedimentação (`sp_mode = theunissen_sedimentation` ou `sedimentation_rate_limited`), o tapIOca acrescenta uma camada de sedimentos de espessura nula para cada intervalo `dt_sed` entre `ti_sed` e `tf_sed`, e escreve `sediment_layers.txt`, `sedimentation_rate.txt` e `base_level.txt` (ou `SP_vc.txt`, com `--sp-format SP_vc`). Os sedimentos, a água e o basalto extrusivo são desenhados uma vez, como moldes abaixo do domínio: suas formas só dão o material das camadas.
 
+`sp_mode = fastscape` (só no mandyocjll, `--code mandyocjll`) troca os processos superficiais do Mandyoc pela FastScape: erosão fluvial (lei de potência do canal), difusão das encostas e, com `fastscape_marine = True`, deposição marinha. Seus parâmetros (`fastscape_kf`, `fastscape_kd`, `fastscape_strip_width`, ..., nas unidades da FastScape, m e anos; listados em `docs/parameters.md` do mandyocjll) vão na forma `setup` como os outros parâmetros dos processos superficiais, e os sedimentos depositados são as camadas de `sediment_layer` (`sp_format = ggciag`). Com `--code mandyoc`, o tapIOca avisa que o C++ para nesse modo.
+
 ![Cenário `rifting_sedimentation`: crosta mais espessa no centro e 70 camadas de sedimentos de espessura nula.](figures/setup_rifting_sedimentation.png)
 
 `water_layer` indica a unidade desenhada como água, logo abaixo do ar. Com `magmatism` e `magmatism_extraction` ligados, uma camada de basalto de espessura nula é acrescentada no topo das camadas sólidas, a menos que `magmatic_layer` indique outra.

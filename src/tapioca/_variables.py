@@ -339,6 +339,14 @@ PARAMS_TYPES = {
     'strain_sed':float,
     'a2l':str, 
 
+    ## FastScape (sp_mode = fastscape, mandyocjll; units of FastScape: m and yr)
+    'fastscape_kf':float, 'fastscape_kfsed':float, 'fastscape_m':float, 'fastscape_n':float,
+    'fastscape_kd':float, 'fastscape_kdsed':float, 'fastscape_g':float, 'fastscape_gsed':float, 'fastscape_p':float,
+    'fastscape_boundary':str, 'fastscape_dt_max':float, 'fastscape_strip_width':float, 'fastscape_marine':str,
+    'fastscape_porosity_silt':float, 'fastscape_porosity_sand':float, 'fastscape_porosity_depth_silt':float,
+    'fastscape_porosity_depth_sand':float, 'fastscape_sand_ratio':float, 'fastscape_mixed_layer':float,
+    'fastscape_kd_silt':float, 'fastscape_kd_sand':float,
+
     ## Fluvial/diffusion
     'K_fluvial':float,
     'm_fluvial':float,

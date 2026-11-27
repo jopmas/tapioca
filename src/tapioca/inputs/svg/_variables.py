@@ -5,7 +5,7 @@ scripts written with the input files.
 
 import os
 
-__all__ = ["REGIMES", "MANTLE_RHEOLOGIES", "SYSTEMS", "DEFAULT_PARAMS", "SP_MODES", "SEDIMENTATION_MODES", "SP_PARAMS", "SP_FORMATS",
+__all__ = ["REGIMES", "MANTLE_RHEOLOGIES", "SYSTEMS", "DEFAULT_PARAMS", "SP_MODES", "MANDYOCJLL_SP_MODES", "FASTSCAPE_PARAMS", "SEDIMENTATION_MODES", "SP_PARAMS", "SP_FORMATS",
            "ORGANIZE_SCRIPT", "RUN_SCRIPT", "POST_PROCESSING_SCRIPT", "NO_POST_PROCESSING_SCRIPT",
            "RUN_LAUNCHER", "PETSC_ENV", "PETSC_ENV_LOOKUP", "ZIP_SCRIPT", "HYPATIA", "HYPATIA_SCRIPT",
            "HYPATIA_CONDA_SCRIPT", "CODES", "MANDYOCJLL_RUN_SCRIPT", "MANDYOCJLL_HYPATIA_SCRIPT",
@@ -22,15 +22,25 @@ CODES:list = ['mandyoc', 'mandyocjll']
 MANDYOCJLL_UNSUPPORTED:tuple = ()
 """tuple: Switches of param.txt that stop mandyocjll when they are on (with RK4, basal_heat and 3D)."""
 
-SP_MODES:list = ['none', 'diffusion', 'sedimentation_only', 'sedimentation_rate_limited', 'theunissen_sedimentation']
-"""list: Modes of surface processes of Mandyoc (sp_mode of param.txt)."""
+SP_MODES:list = ['none', 'diffusion', 'sedimentation_only', 'sedimentation_rate_limited', 'theunissen_sedimentation', 'fastscape']
+"""list: Modes of surface processes of Mandyoc (sp_mode of param.txt); fastscape (erosion and sedimentation with
+FastScape) only in mandyocjll."""
+MANDYOCJLL_SP_MODES:list = ['fastscape']
+"""list: Modes of surface processes that only mandyocjll has."""
+FASTSCAPE_PARAMS:tuple = ('fastscape_kf', 'fastscape_kfsed', 'fastscape_m', 'fastscape_n', 'fastscape_kd', 'fastscape_kdsed',
+                          'fastscape_g', 'fastscape_gsed', 'fastscape_p', 'fastscape_boundary', 'fastscape_dt_max',
+                          'fastscape_strip_width', 'fastscape_marine', 'fastscape_porosity_silt', 'fastscape_porosity_sand',
+                          'fastscape_porosity_depth_silt', 'fastscape_porosity_depth_sand', 'fastscape_sand_ratio',
+                          'fastscape_mixed_layer', 'fastscape_kd_silt', 'fastscape_kd_sand')
+"""tuple: Parameters of sp_mode = fastscape in param.txt (units of FastScape: m and yr; see docs/parameters.md of
+mandyocjll)."""
 SEDIMENTATION_MODES:list = ['sedimentation_rate_limited', 'theunissen_sedimentation']
 """list: Modes of surface processes that deposit layers of sediments (SP_vc.txt)."""
 SP_FORMATS:list = ['ggciag', 'SP_vc']
 """list: Formats of the files of the sedimentation: ggciag (default; sediment_layers.txt and sedimentation_rate.txt, the
 Mandyoc of ggciag) or SP_vc (SP_vc.txt, the Mandyoc with the sedimentation of Theunissen, mandyoc_tests)."""
 SP_PARAMS:tuple = ('sp_surface_tracking', 'sp_d_c', 'plot_sediment', 'a2l', 'surface_particles_per_element',
-                   'continental_slope', 'strain_sed', 'sea_level', 'K_fluvial', 'm_fluvial', 'air_threshold_density')
+                   'continental_slope', 'strain_sed', 'sea_level', 'K_fluvial', 'm_fluvial', 'air_threshold_density') + FASTSCAPE_PARAMS
 """tuple: Parameters of param.txt about the surface processes that may be given in the setup shape of the SVG (besides
 sp_surface_processes and sp_mode); they are written to param.txt as given."""
 

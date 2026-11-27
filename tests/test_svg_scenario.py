@@ -941,6 +941,22 @@ def test_sedimentation_errors(settings, message):
         build_scenario("rifting_sedimentation", **settings)
 
 
+def test_fastscape_mode(tmp_path, capsys):
+    """sp_mode = fastscape (mandyocjll): its parameters go to param.txt, the sediments to sediment_layers.txt."""
+    scenario = build_scenario("rifting_sedimentation", sp_mode="fastscape", code="mandyocjll", fastscape_kf=2e-5,
+                              fastscape_marine=True)
+    with quiet():
+        scenario.write_all(str(tmp_path), plots=False, scripts=False)
+    params = (tmp_path / "param.txt").read_text()
+    assert re.search(r"^sp_mode\s*= fastscape", params, re.M)
+    assert re.search(r"^fastscape_kf\s*= 2e-05", params, re.M) and re.search(r"^fastscape_marine\s*= True", params, re.M)
+    assert (tmp_path / "sediment_layers.txt").exists() and not (tmp_path / "sedimentation_rate.txt").exists()
+    build_scenario("rifting_sedimentation", sp_mode="fastscape").write_all(str(tmp_path / "cpp"), plots=False, scripts=False)
+    assert "only in mandyocjll" in capsys.readouterr().out
+    with pytest.raises(SVGInputError, match="needs sp_format = ggciag"):
+        build_scenario("rifting_sedimentation", sp_mode="fastscape", **SP_VC)
+
+
 def test_unit_layer_of_a_template():
     layer = reader.unit_layer(str(svg_path("rifting_sedimentation")), "sediments", Nx=11)
     assert layer.title == "Sediments" and layer.color == "#e8c96b" and layer.params["k"] == 7.0e-7

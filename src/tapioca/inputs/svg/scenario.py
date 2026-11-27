@@ -47,6 +47,11 @@ experiment:
     base_level = -500 m
     strain_sed = 0.25                          (and the other parameters of SP_PARAMS, written to param.txt)
 
+sp_mode = fastscape (erosion and sedimentation with FastScape) is only in mandyocjll (code = mandyocjll): its
+parameters (FASTSCAPE_PARAMS, e.g. fastscape_kf = 1e-5, fastscape_kd = 1e-2, fastscape_strip_width = 20000,
+fastscape_marine = True; units of FastScape, m and yr) are given in the setup shape as the other SP_PARAMS, and the
+sediments are the layers of sediment_layer (sp_format = ggciag).
+
 Sedimentation: with sp_surface_processes = True and a sp_mode that deposits sediments (SEDIMENTATION_MODES), one
 layer of zero thickness with the material of sediment_layer is added at the top of the solid layers for each
 interval of dt_sed between ti_sed and tf_sed. sedimentation_rate [m2/yr] may change in time: "t1: rate1, t2: rate2,
@@ -101,7 +106,7 @@ from ..._aux_functions import (find_nearest, read_preset_temperature, adapt_pres
                                read_preset_temperature_field, interpolate_preset_temperature_field)
 from ..generic_input_classes import TemperatureFieldBuilder, VelocityFieldBuilder, VerboseExtension, GenericTimeConditions
 from ..checks import SVGChecks
-from ._variables import (REGIMES, MANTLE_RHEOLOGIES, SYSTEMS, DEFAULT_PARAMS, SP_MODES, SEDIMENTATION_MODES, SP_PARAMS, SP_FORMATS,
+from ._variables import (REGIMES, MANTLE_RHEOLOGIES, SYSTEMS, DEFAULT_PARAMS, SP_MODES, MANDYOCJLL_SP_MODES, SEDIMENTATION_MODES, SP_PARAMS, SP_FORMATS,
                          ORGANIZE_SCRIPT, RUN_SCRIPT,
                          POST_PROCESSING_SCRIPT, NO_POST_PROCESSING_SCRIPT,
                          RUN_LAUNCHER, PETSC_ENV, PETSC_ENV_LOOKUP, ZIP_SCRIPT, HYPATIA, HYPATIA_SCRIPT,
@@ -729,6 +734,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         #format of the files of the surface processes (default ggciag): SP_vc (SP_vc.txt, the Mandyoc of the sedimentation of
         #Theunissen, mandyoc_tests) or ggciag (sediment_layers.txt and sedimentation_rate.txt, the Mandyoc of ggciag)
         self.sp_format = self._check_choice('sp_format', setting('sp_format', 'ggciag'), SP_FORMATS)
+        if(self.sp_surface_processes and self.sp_mode in MANDYOCJLL_SP_MODES and self.sp_format != 'ggciag'):
+            self._fail(f"sp_mode = {self.sp_mode} (mandyocjll) needs sp_format = ggciag (sediment_layers.txt).")
         #layers of sediments: the modes that deposit sediments; with ggciag, every mode (Mandyoc reads
         #sediment_layers.txt whenever sp_surface_processes is True)
         self.sedimentation = self.sp_surface_processes and (self.sp_mode in SEDIMENTATION_MODES or self.sp_format == 'ggciag')
@@ -1304,6 +1311,8 @@ class SVGScenario(SVGChecks, VerboseExtension):
         builder.path = output_dir
         builder.export_interfaces(export='none')
         parameters = self.parameters(**params)
+        if(self.code != 'mandyocjll' and self.sp_surface_processes and self.sp_mode in MANDYOCJLL_SP_MODES):
+            print(f"Warning: sp_mode = {self.sp_mode} is only in mandyocjll (code = mandyocjll); the C++ Mandyoc stops at it")
         if(self.code == 'mandyocjll' and scripts and (unsupported := self._unsupported_by_mandyocjll(parameters))):
             print(f"Warning: mandyocjll does not have these options of param.txt yet and will stop: {', '.join(unsupported)}")
         builder.set_params(**parameters)
